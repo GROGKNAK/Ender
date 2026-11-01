@@ -1,0 +1,59 @@
+name: Bug report
+description: Something calculated, parsed or exported incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this is about a wrong number, the settings values matter more than
+        anything else. Please do not attach a real settings export from an
+        in-service relay — quote the handful of settings involved instead.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did Ender do, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Relevant settings
+      description: >
+        The settings the calculation depends on — line impedances, zone
+        reaches, ratios, 87L characteristic. Redact identifiers if needed.
+      placeholder: |
+        Z1MAG = 1.42   Z1ANG = 84.70
+        Z0MAG = 4.64   Z0ANG = 73.00
+        CTR = 240      PTR = 2000
+        87LR = 6.0     87LANG = 195
+      render: text
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Settings parsing
+        - Distance (21) calculation
+        - Differential (87L) calculation
+        - Report / PDF / CSV export
+        - User interface
+        - Install or packaging
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Ender version
+      placeholder: 0.1.0
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, exported report, steps to reproduce.

@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Ender — Differential (87L)</title><style>
+:root{
+  --bg:#12151a; --panel:#1a1f27; --panel2:#151921; --line:#2a313c; --line2:#353e4b;
+  --text:#e6e9ef; --muted:#8b95a5; --dim:#5d6878;
+  --accent:#4f9dff; --good:#3fb950; --warn:#d29922; --bad:#f85149; --violet:#a371f7;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.5 "Segoe UI",system-ui,sans-serif;display:flex;height:100vh;overflow:hidden}
+nav{width:210px;flex:0 0 210px;background:var(--panel2);border-right:1px solid var(--line);
+  padding:16px 0;display:flex;flex-direction:column}
+.brand{padding:0 18px 16px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.brand h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-0.01em}
+.brand span{color:var(--dim);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+nav a{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--muted);
+  text-decoration:none;font-size:13px;border-left:2px solid transparent}
+nav a .n{width:19px;height:19px;border-radius:50%;border:1px solid var(--line2);
+  display:grid;place-items:center;font-size:10px;color:var(--dim);flex:0 0 19px}
+nav a.on{color:var(--text);background:#1e2531;border-left-color:var(--accent)}
+nav a.on .n{border-color:var(--accent);color:var(--accent)}
+nav a.done .n{background:var(--good);border-color:var(--good);color:#0d1117}
+.navfoot{margin-top:auto;padding:12px 18px 0;border-top:1px solid var(--line);color:var(--dim);font-size:11px}
+main{flex:1;overflow:auto;padding:22px 26px}
+header.page{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+header.page h2{margin:0;font-size:19px;font-weight:600}
+header.page p{margin:3px 0 0;color:var(--muted);font-size:13px}
+.actions{display:flex;gap:8px}
+button{font:inherit;font-size:13px;padding:7px 14px;border-radius:6px;cursor:pointer;
+  background:#222a35;color:var(--text);border:1px solid var(--line2)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px 17px;margin-bottom:14px}
+.card h3{margin:0 0 3px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.card .sub{color:var(--muted);font-size:12px;margin:0 0 12px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;
+  letter-spacing:.05em;padding:7px 9px;border-bottom:1px solid var(--line2);white-space:nowrap}
+td{padding:7px 9px;border-bottom:1px solid #20262f;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr.sel td{background:#1e2735}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px}
+.tag{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.03em}
+.t-op{background:rgba(63,185,80,.15);color:var(--good);border:1px solid rgba(63,185,80,.35)}
+.t-re{background:rgba(139,149,165,.13);color:var(--muted);border:1px solid var(--line2)}
+.t-in{background:rgba(79,157,255,.15);color:var(--accent);border:1px solid rgba(79,157,255,.35)}
+.t-ex{background:rgba(210,153,34,.15);color:var(--warn);border:1px solid rgba(210,153,34,.35)}
+.t-ok{background:rgba(63,185,80,.15);color:var(--good)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.drop{border:1.5px dashed var(--line2);border-radius:9px;padding:22px;text-align:center;
+  background:var(--panel2);margin-bottom:12px}
+.drop.filled{border-style:solid;border-color:rgba(63,185,80,.4);background:rgba(63,185,80,.05);text-align:left;padding:15px 17px}
+.drop .big{font-size:13px;color:var(--muted)}
+.warn{display:flex;gap:9px;align-items:flex-start;background:rgba(210,153,34,.09);
+  border:1px solid rgba(210,153,34,.3);border-radius:7px;padding:10px 13px;font-size:12.5px;margin-bottom:14px}
+.warn b{color:var(--warn)}
+.ctl{display:flex;align-items:center;gap:11px;margin-bottom:11px;font-size:12.5px}
+.ctl label{width:128px;color:var(--muted);flex:0 0 128px}
+.ctl input[type=range]{flex:1;accent-color:var(--accent)}
+.ctl .val{width:62px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+.seg span{padding:5px 11px;font-size:12px;color:var(--muted);border-right:1px solid var(--line2)}
+.seg span:last-child{border-right:none}
+.seg span.on{background:var(--accent);color:#06101f;font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:9px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.phgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:4px}
+.ph{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:9px 11px}
+.ph .lbl{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+.ph .v{font-size:14px;font-variant-numeric:tabular-nums;margin-top:2px}
+.ph .a{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pa{color:var(--bad)} .pb{color:var(--good)} .pc{color:var(--accent)}
+.navsep{padding:14px 18px 6px;color:var(--dim);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;border-top:1px solid var(--line);margin-top:10px}
+nav a .n.ico{font-size:11px;color:var(--muted);border-color:var(--line2)}
+nav a.on .n.ico{color:var(--accent)}
+
+.tip{position:relative;display:inline-flex;align-items:center;gap:4px;cursor:help}
+.tip>.q{display:inline-grid;place-items:center;width:13px;height:13px;border-radius:50%;
+  border:1px solid var(--line2);color:var(--dim);font-size:9px;line-height:1;flex:0 0 13px}
+.tip:hover>.q,.tip.open>.q{border-color:var(--accent);color:var(--accent)}
+.tipbox{position:absolute;left:-6px;top:calc(100% + 8px);width:286px;background:#0e1116;
+  border:1px solid var(--line2);border-radius:8px;padding:11px 13px;z-index:40;
+  box-shadow:0 12px 30px rgba(0,0,0,.6);display:none;
+  font-size:12px;line-height:1.55;color:var(--text);white-space:normal;text-align:left;
+  font-weight:400;text-transform:none;letter-spacing:0}
+.tip:hover .tipbox,.tip.open .tipbox{display:block}
+.tip.right .tipbox{left:auto;right:-6px}
+.tipbox b{display:block;color:var(--accent);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:5px;font-weight:600}
+.tipbox .tcode{display:block;margin-top:7px;padding:6px 8px;background:#161b22;border-radius:5px;
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:11px;color:var(--good)}
+th .tip{color:var(--muted)}
+
+.swatches{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.sw{width:34px;height:34px;border-radius:7px;border:2px solid transparent;cursor:pointer}
+.sw.on{border-color:var(--text)}
+.themegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.theme{border:1.5px solid var(--line);border-radius:8px;padding:10px;cursor:pointer;background:var(--panel2)}
+.theme.on{border-color:var(--accent)}
+.theme .bars{display:flex;gap:3px;height:28px;margin-bottom:7px}
+.theme .bars i{flex:1;border-radius:3px}
+.theme .nm{font-size:12px}
+.rowline{display:flex;align-items:center;justify-content:space-between;padding:9px 0;
+  border-bottom:1px solid #20262f;font-size:12.5px}
+.rowline:last-child{border-bottom:none}
+.rowline .lbl{color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;
+  border:1px solid var(--line2);background:var(--panel2);font-size:12px;color:var(--muted)}
+.search{width:100%;padding:8px 11px;border-radius:7px;border:1px solid var(--line2);
+  background:var(--panel2);color:var(--text);font:inherit;font-size:13px}
+.linkbtn{color:var(--accent);cursor:pointer}
+.sgn{font:inherit;font-size:11px;padding:3px 5px;border-radius:5px;background:var(--panel2);
+  color:var(--muted);border:1px solid var(--line2);min-width:88px}
+.sgn.pass{color:var(--good);border-color:rgba(63,185,80,.35)}
+.sgn.fail{color:var(--bad);border-color:rgba(248,81,73,.35)}
+.sgn.skip{color:var(--warn);border-color:rgba(210,153,34,.35)}
+.sgn.neutral{color:var(--muted);border-color:var(--line2)}
+tr.pick{cursor:pointer}
+tr.pick:hover td{background:#1b2230}
+tr.pick.sel td{background:#1e2735}
+.toast{position:fixed;right:22px;bottom:22px;z-index:200;display:flex;align-items:center;gap:9px;
+  background:#152a1b;border:1px solid rgba(63,185,80,.45);color:#b9f0c4;border-radius:9px;
+  padding:11px 15px;font-size:13px;box-shadow:0 14px 34px rgba(0,0,0,.55);
+  opacity:0;transform:translateY(9px);transition:opacity .16s,transform .16s}
+.toast.in{opacity:1;transform:translateY(0)}
+.toast .ok{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;
+  background:#3fb950;color:#0d1117;font-size:11px;font-weight:700}
+.swatchin{width:26px;height:22px;padding:0;border:1px solid var(--line2);border-radius:5px;
+  background:transparent;cursor:pointer}
+
+/* Calculation record: formula, substitution, result -- one line each. */
+.math{display:grid;grid-template-columns:auto 18px 1fr;align-items:baseline;
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;line-height:1.75;
+  background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+  padding:11px 14px;margin:9px 0 0;overflow-x:auto}
+.math .l{color:var(--accent);text-align:right;padding-right:7px;white-space:nowrap}
+.math .e{color:var(--dim);text-align:center}
+.math .r{color:var(--text);white-space:nowrap}
+.math .r em{color:var(--muted);font-style:normal}
+.why{color:var(--muted);font-size:12px;margin:8px 0 0;line-height:1.6}
+.ref{font-family:"Cascadia Mono",Consolas,monospace;font-size:11px;color:var(--violet)}
+.sec{margin-bottom:18px}
+.sec>h4{display:flex;align-items:center;gap:9px;margin:0 0 4px;font-size:14px;font-weight:600}
+.sec>h4 .badge{display:inline-grid;place-items:center;width:21px;height:21px;border-radius:5px;
+  background:#242c38;color:var(--accent);font-size:11px;font-weight:700}
+.toc{position:sticky;top:0}
+.toc a{display:block;padding:6px 9px;border-radius:6px;color:var(--muted);text-decoration:none;
+  font-size:12.5px;border-left:2px solid transparent}
+.toc a:hover{background:var(--panel2);color:var(--text)}
+.toc a.on{background:#1e2531;color:var(--text);border-left-color:var(--accent)}
+.chk{display:flex;gap:9px;align-items:flex-start;background:rgba(63,185,80,.07);
+  border:1px solid rgba(63,185,80,.28);border-radius:7px;padding:10px 13px;margin-top:10px;font-size:12.5px}
+.chk b{color:var(--good)}
+.excl li{margin-bottom:5px}
+.signbox{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px}
+.signbox .fld{border-bottom:1px solid var(--line2);padding:16px 2px 6px;color:var(--dim);font-size:11.5px}
+.sgnp{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;
+  border:1px solid var(--line2);background:var(--panel2)}
+.sgnp.pass{color:var(--good);border-color:rgba(63,185,80,.35)}
+.sgnp.fail{color:var(--bad);border-color:rgba(248,81,73,.35)}
+.sgnp.skip{color:var(--warn);border-color:rgba(210,153,34,.35)}
+.sgnp.neutral{color:var(--muted);border-color:var(--line2)}
+.cell{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel2);
+  border:1px solid var(--line2);border-radius:5px;padding:4px 8px;width:100%}
+.cell:focus{outline:none;border-color:var(--accent)}
+.initials{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;
+  background:#242c38;color:var(--accent);font-size:11px;font-weight:600}
+.endlbl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+.namewrap{display:flex;align-items:center;gap:7px;margin:3px 0 2px}
+.nameedit{font:inherit;font-size:15px;font-weight:600;color:var(--text);background:transparent;
+  border:1px solid transparent;border-radius:6px;padding:4px 8px;margin-left:-8px;flex:1;min-width:0}
+.nameedit:hover{border-color:var(--line2);background:var(--panel2)}
+.nameedit.active{border-color:var(--accent);background:var(--panel2);outline:none;
+  box-shadow:0 0 0 3px rgba(79,157,255,.16)}
+.pencil{color:var(--dim);font-size:13px;cursor:pointer}
+.nameedit:hover+.pencil,.nameedit.active+.pencil{color:var(--accent)}
+.src{font-size:11px;color:var(--dim);margin-bottom:10px;display:flex;align-items:center;gap:5px}
+.src .tip>.q{width:12px;height:12px;font-size:8px}
+
+</style></head>
+<body>
+  <nav>
+    <div class="brand"><h1>Ender</h1><span>87L / 21 test builder</span></div>
+    <a href="01-settings.html" class="done"><span class="n">✓</span>Settings files</a>
+    <a href="02-system.html" class="done"><span class="n">✓</span>Line &amp; system</a>
+    <a href="03-distance.html" class="done"><span class="n">✓</span>Distance (21)</a>
+    <a href="04-differential.html" class="on"><span class="n">4</span>Differential (87L)</a>
+    <a href="05-report.html" class=""><span class="n">5</span>Report</a>
+    <a href="06-findings.html" class=""><span class="n">6</span>Findings</a>
+    <div class="navsep">Library</div>
+    <a href="07-reports.html" class=""><span class="n ico">▤</span>Saved reports</a>
+    <div class="navsep">Settings</div>
+    <a href="09-config.html" class=""><span class="n ico">⚙</span>System settings</a>
+    <a href="08-appearance.html" class=""><span class="n ico">◐</span>Appearance</a>
+    <div class="navfoot"><span data-nm="local" data-short="1">ALPHA</span> – <span data-nm="remote" data-short="1">BRAVO</span><br>Line 1 · 345 kV · 42.7 mi</div>
+  </nav>
+  <main>
+    <header class="page">
+      <div><h2>Differential (87L) test points</h2>
+      <p>The Alpha Plane: the complex ratio of remote to local current. Inside the shaded region the element restrains.</p></div>
+      <div class="actions"><button>← Back</button><button class="primary">Continue →</button></div>
+    </header>
+
+    <div style="display:grid;grid-template-columns:460px 1fr;gap:14px;align-items:start">
+      <div class="card" style="margin:0">
+        <h3>Alpha plane — I<sub>R</sub> / I<sub>L</sub></h3>
+        <p class="sub">Restraint region from 87LR and 87LANG</p>
+        <svg id="ap" width="420" height="420"></svg>
+        <div class="legend">
+          <span><i style="background:#8b95a5"></i>Restraint region</span>
+          <span><i style="background:#3fb950"></i>Operate</span>
+          <span><i style="background:#f85149"></i>Restrain</span>
+          <span><i style="background:#d29922"></i>Live point</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>Characteristic</h3>
+          <p class="sub">Read from the relay, editable to explore margin.</p>
+          <div class="ctl"><label>87LR (radius)</label>
+            <input type="range" id="sR" min="20" max="100" value="60">
+            <span class="val" id="vR">6.0</span></div>
+          <div class="ctl"><label>87LANG</label>
+            <input type="range" id="sA" min="120" max="220" value="195">
+            <span class="val" id="vA">195°</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Live test point</h3>
+          <p class="sub">Where the injected current pair lands.</p>
+          <div class="ctl"><label>Ratio magnitude</label>
+            <input type="range" id="sM" min="5" max="800" value="100">
+            <span class="val" id="vM">1.00</span></div>
+          <div class="ctl"><label>Ratio angle</label>
+            <input type="range" id="sT" min="0" max="359" value="180">
+            <span class="val" id="vT">180°</span></div>
+          <div style="margin-top:12px;padding:11px 13px;border-radius:7px;background:#151921;border:1px solid var(--line)">
+            <span style="color:var(--muted);font-size:12.5px">Element should </span>
+            <span id="verdict" class="tag t-re">RESTRAIN</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Standard 87L checks</h3>
+          <p class="sub">Generated for each phase — 18 tests across A, B and C.</p>
+          <table>
+            <tr><th>Check</th><th>I<sub>L</sub></th><th>I<sub>R</sub></th><th>Ratio</th><th>Expected</th></tr>
+            <tr><td>Through load</td><td class="num">5.0 ∠0°</td><td class="num">5.0 ∠180°</td><td class="num">1.00 ∠180°</td><td><span class="tag t-re">RESTRAIN</span></td></tr>
+            <tr><td>Internal, equal infeed</td><td class="num">5.0 ∠0°</td><td class="num">5.0 ∠0°</td><td class="num">1.00 ∠0°</td><td><span class="tag t-op">OPERATE</span></td></tr>
+            <tr><td>Outer radius check</td><td class="num">1.0 ∠0°</td><td class="num">6.5 ∠180°</td><td class="num">6.50 ∠180°</td><td><span class="tag t-op">OPERATE</span></td></tr>
+            <tr><td>Inner radius check</td><td class="num">6.5 ∠0°</td><td class="num">1.0 ∠180°</td><td class="num">0.15 ∠180°</td><td><span class="tag t-op">OPERATE</span></td></tr>
+            <tr><td>Angle edge, inside</td><td class="num">5.0 ∠0°</td><td class="num">5.0 ∠265°</td><td class="num">1.00 ∠265°</td><td><span class="tag t-re">RESTRAIN</span></td></tr>
+            <tr><td>Angle edge, outside</td><td class="num">5.0 ∠0°</td><td class="num">5.0 ∠280°</td><td class="num">1.00 ∠280°</td><td><span class="tag t-op">OPERATE</span></td></tr>
+            <tr><td>Pickup (87LPP)</td><td class="num">0.55 ∠0°</td><td class="num">0.55 ∠0°</td><td class="num">1.00 ∠0°</td><td><span class="tag t-op">OPERATE</span></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+<script>
+var NS='http://www.w3.org/2000/svg';
+var DOM=7, S=30, CX=210, CY=210;
+function px(r){ return CX + r*S; }
+function py(i){ return CY - i*S; }
+function el(n,a){ var e=document.createElementNS(NS,n); for(var k in a){ e.setAttribute(k,a[k]); } return e; }
+function P(r,a){ var t=a*Math.PI/180; return [px(r*Math.cos(t)), py(r*Math.sin(t))]; }
+
+function restrains(m,t,R,A){
+  if(m > R || m < 1/R) return false;
+  var d=((t-180+540)%360)-180;
+  return Math.abs(d) <= A/2;
+}
+
+function draw(){
+  var svg=document.getElementById('ap');
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  var R=+document.getElementById('sR').value/10;
+  var A=+document.getElementById('sA').value;
+
+  for(var k=-DOM;k<=DOM;k+=2){
+    svg.appendChild(el('line',{x1:px(k),y1:py(-DOM),x2:px(k),y2:py(DOM),stroke:'#222a35','stroke-width':1}));
+    svg.appendChild(el('line',{x1:px(-DOM),y1:py(k),x2:px(DOM),y2:py(k),stroke:'#222a35','stroke-width':1}));
+  }
+  svg.appendChild(el('line',{x1:px(-DOM),y1:py(0),x2:px(DOM),y2:py(0),stroke:'#4a5566','stroke-width':1.4}));
+  svg.appendChild(el('line',{x1:px(0),y1:py(-DOM),x2:px(0),y2:py(DOM),stroke:'#4a5566','stroke-width':1.4}));
+
+  var a1=180-A/2, a2=180+A/2, big=A>180?1:0;
+  var o1=P(R,a1), o2=P(R,a2), i2=P(1/R,a2), i1=P(1/R,a1);
+  var d='M '+o1[0]+' '+o1[1]+
+        ' A '+R*S+' '+R*S+' 0 '+big+' 0 '+o2[0]+' '+o2[1]+
+        ' L '+i2[0]+' '+i2[1]+
+        ' A '+(1/R)*S+' '+(1/R)*S+' 0 '+big+' 1 '+i1[0]+' '+i1[1]+' Z';
+  svg.appendChild(el('path',{d:d,fill:'rgba(139,149,165,0.16)',stroke:'#8b95a5','stroke-width':1.5}));
+
+  // the through-current anchor point
+  svg.appendChild(el('circle',{cx:px(-1),cy:py(0),r:3,fill:'#8b95a5'}));
+  var at=el('text',{x:px(-1)-4,y:py(0)+17,fill:'#8b95a5','font-size':10}); at.textContent='−1'; svg.appendChild(at);
+
+  var pts=[[1,180,'#f85149'],[1,0,'#3fb950'],[6.5,180,'#3fb950'],[0.154,180,'#3fb950'],
+           [1,265,'#f85149'],[1,280,'#3fb950']];
+  pts.forEach(function(p){
+    var c=P(p[0],p[1]);
+    svg.appendChild(el('circle',{cx:c[0],cy:c[1],r:4,fill:p[2],stroke:'#12151a','stroke-width':1.4}));
+  });
+
+  var m=+document.getElementById('sM').value/100;
+  var t=+document.getElementById('sT').value;
+  var live=P(m,t);
+  svg.appendChild(el('circle',{cx:live[0],cy:live[1],r:7,fill:'none',stroke:'#d29922','stroke-width':2}));
+  svg.appendChild(el('circle',{cx:live[0],cy:live[1],r:3,fill:'#d29922'}));
+
+  var v=document.getElementById('verdict');
+  var res=restrains(m,t,R,A);
+  v.textContent=res?'RESTRAIN':'OPERATE';
+  v.className='tag '+(res?'t-re':'t-op');
+}
+
+function bind(id,out,fn){
+  var s=document.getElementById(id);
+  s.addEventListener('input',function(){ document.getElementById(out).textContent=fn(s.value); draw(); });
+}
+bind('sR','vR',function(v){return (v/10).toFixed(1);});
+bind('sA','vA',function(v){return v+'°';});
+bind('sM','vM',function(v){return (v/100).toFixed(2);});
+bind('sT','vT',function(v){return v+'°';});
+draw();
+</script>
+  </main>
+<script>
+/*
+ * Shared runtime for every page: station names, sign-off colours, navigation
+ * and save confirmations. State lives in the main process so a rename made on
+ * one screen is already true on the next.
+ */
+(function () {
+  var ORDER = ["01-settings.html","02-system.html","03-distance.html","04-differential.html","05-report.html","06-findings.html"];
+  var DEFAULT_LABELS = [{"code":"—","text":"Not set","colour":"#8b95a5","as":"Neutral","dflt":true},{"code":"PASS","text":"Passed","colour":"#3fb950","as":"Pass","dflt":false},{"code":"FAIL","text":"Failed","colour":"#f85149","as":"Fail","dflt":false},{"code":"NOOP","text":"No operation","colour":"#d29922","as":"Skipped","dflt":false},{"code":"NO TEST","text":"Not tested","colour":"#8b95a5","as":"Skipped","dflt":false},{"code":"N/A","text":"Not applicable","colour":"#8b95a5","as":"Neutral","dflt":false},{"code":"DEFER","text":"Deferred to next outage","colour":"#d29922","as":"Skipped","dflt":false},{"code":"RETEST","text":"Retest required","colour":"#f85149","as":"Fail","dflt":false}];
+  var DEFAULT_NAMES = { local: "ALPHA 345 kV", remote: "BRAVO 345 kV" };
+  var SAVE_MSG = "Differential (87L) saved";
+
+  var state = { names: DEFAULT_NAMES, labels: DEFAULT_LABELS, signoff: {} };
+
+  function hexA(hex, a) {
+    var n = parseInt(String(hex).replace('#', ''), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function toast(msg) {
+    var el = document.createElement('div');
+    el.className = 'toast';
+    var tick = document.createElement('span');
+    tick.className = 'ok';
+    tick.textContent = '\u2713';
+    var txt = document.createElement('span');
+    txt.textContent = msg;
+    el.appendChild(tick);
+    el.appendChild(txt);
+    document.body.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('in'); });
+    setTimeout(function () {
+      el.classList.remove('in');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
+    }, 2200);
+  }
+
+  function save(patch, msg) {
+    if (window.demo) window.demo.set(patch);
+    if (msg) toast(msg);
+  }
+
+  function labelFor(code) {
+    for (var i = 0; i < state.labels.length; i++) {
+      if (state.labels[i].code === code) return state.labels[i];
+    }
+    return null;
+  }
+
+  function applyNames() {
+    var els = document.querySelectorAll('[data-nm]');
+    for (var i = 0; i < els.length; i++) {
+      var v = state.names[els[i].getAttribute('data-nm')] || '';
+      if (els[i].hasAttribute('data-short')) v = v.split(' ')[0];
+      els[i].textContent = v;
+    }
+    var ins = document.querySelectorAll('[data-nmv]');
+    for (var j = 0; j < ins.length; j++) {
+      ins[j].value = state.names[ins[j].getAttribute('data-nmv')] || '';
+    }
+  }
+
+  function paint(sel) {
+    var L = labelFor(sel.value);
+    sel.style.color = L ? L.colour : '';
+    sel.style.borderColor = L ? hexA(L.colour, 0.45) : '';
+  }
+
+  function buildSelects() {
+    var sels = document.querySelectorAll('select.sgn');
+    for (var i = 0; i < sels.length; i++) {
+      (function (s) {
+        var key = s.getAttribute('data-sg');
+        var cur = (key && state.signoff[key]) || s.value;
+        s.innerHTML = '';
+        for (var j = 0; j < state.labels.length; j++) {
+          var o = document.createElement('option');
+          o.textContent = state.labels[j].code;
+          s.appendChild(o);
+        }
+        if (cur) s.value = cur;
+        paint(s);
+        s.onchange = function () {
+          paint(s);
+          var sg = {};
+          for (var k in state.signoff) sg[k] = state.signoff[k];
+          sg[key] = s.value;
+          state.signoff = sg;
+          save({ signoff: sg }, 'Sign-off saved');
+        };
+      })(sels[i]);
+    }
+  }
+
+  function paintChips() {
+    var chips = document.querySelectorAll('[data-chip]');
+    for (var i = 0; i < chips.length; i++) {
+      var L = labelFor(chips[i].getAttribute('data-chip'));
+      if (L) {
+        chips[i].style.color = L.colour;
+        chips[i].style.borderColor = hexA(L.colour, 0.45);
+      }
+    }
+  }
+
+  function wire() {
+    var here = decodeURIComponent(location.pathname.split('/').pop());
+    var at = ORDER.indexOf(here);
+    var bs = document.querySelectorAll('button');
+    for (var k = 0; k < bs.length; k++) {
+      (function (b) {
+        var t = b.textContent.trim();
+        if (t.indexOf('\u2190') === 0 && at > 0) {
+          b.onclick = function () { location.href = ORDER[at - 1]; };
+        } else if (t.slice(-1) === '\u2192' && at >= 0 && at < ORDER.length - 1) {
+          b.onclick = function () { location.href = ORDER[at + 1]; };
+        } else if (t === 'New test run') {
+          b.onclick = function () { location.href = ORDER[0]; };
+        } else if (t === 'Save') {
+          b.onclick = function () { save({ names: state.names, labels: state.labels }, SAVE_MSG); };
+        } else if (t === 'Reset to default') {
+          b.onclick = function () {
+            state.names = DEFAULT_NAMES;
+            state.labels = DEFAULT_LABELS;
+            save({ names: DEFAULT_NAMES, labels: DEFAULT_LABELS }, 'Reset to defaults');
+            applyNames(); buildSelects(); paintChips(); syncSwatches();
+          };
+        }
+      })(bs[k]);
+    }
+
+    var ins = document.querySelectorAll('[data-nmv]');
+    for (var m = 0; m < ins.length; m++) {
+      (function (inp) {
+        inp.onchange = function () {
+          var which = inp.getAttribute('data-nmv');
+          var names = { local: state.names.local, remote: state.names.remote };
+          names[which] = inp.value.trim() || names[which];
+          state.names = names;
+          applyNames();
+          save({ names: names }, 'Renamed to ' + names[which]);
+        };
+      })(ins[m]);
+    }
+
+    var cols = document.querySelectorAll('input[data-lblcolour]');
+    for (var c = 0; c < cols.length; c++) {
+      (function (inp) {
+        inp.onchange = function () {
+          var code = inp.getAttribute('data-lblcolour');
+          state.labels = state.labels.map(function (L) {
+            if (L.code !== code) return L;
+            return { code: L.code, text: L.text, colour: inp.value, as: L.as, dflt: L.dflt };
+          });
+          paintChips(); buildSelects(); syncSwatches();
+          save({ labels: state.labels }, code + ' colour saved');
+        };
+      })(cols[c]);
+    }
+  }
+
+  function syncSwatches() {
+    var hexes = document.querySelectorAll('[data-lblhex]');
+    for (var i = 0; i < hexes.length; i++) {
+      var L = labelFor(hexes[i].getAttribute('data-lblhex'));
+      if (L) hexes[i].textContent = L.colour;
+    }
+    var ins = document.querySelectorAll('input[data-lblcolour]');
+    for (var j = 0; j < ins.length; j++) {
+      var M = labelFor(ins[j].getAttribute('data-lblcolour'));
+      if (M) ins[j].value = M.colour;
+    }
+  }
+
+  function start() {
+    applyNames();
+    buildSelects();
+    paintChips();
+    syncSwatches();
+    wire();
+    if (window.initDetail) window.initDetail(state);
+  }
+
+  if (window.demo) {
+    window.demo.get().then(function (s) {
+      if (s && s.names) state.names = { local: s.names.local || DEFAULT_NAMES.local, remote: s.names.remote || DEFAULT_NAMES.remote };
+      if (s && s.labels && s.labels.length) state.labels = s.labels;
+      if (s && s.signoff) state.signoff = s.signoff;
+      start();
+    }, start);
+  } else {
+    start();
+  }
+})();
+</script>
+</body></html>

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Only the contents need reading; nothing here writes back to the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # The unit tests are plain node and never start Electron, so skipping the
+      # ~100 MB binary download keeps this job quick and off the minute budget.
+      - name: Install
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Unit tests
+        run: npm test
+
+      # build-samples.js reparses its own output through src/core/parseSettings
+      # and exits non-zero if a value stops surviving the round trip, or if the
+      # two line ends stop agreeing on the settings an 87L scheme requires to
+      # match. That makes it a real regression test, not just a generator.
+      - name: Samples still parse
+        run: node samples/build-samples.js
+
+      - name: Mockups still build
+        run: node mockup/build.js

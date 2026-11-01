@@ -1,0 +1,27 @@
+version: 2
+
+# Dependabot is free on every plan, public or private.
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Electron and the builder move together; one PR instead of two.
+      electron:
+        patterns:
+          - electron
+          - electron-builder
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"

@@ -1,0 +1,1187 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Ender — Findings</title><style>
+:root{
+  --bg:#12151a; --panel:#1a1f27; --panel2:#151921; --line:#2a313c; --line2:#353e4b;
+  --text:#e6e9ef; --muted:#8b95a5; --dim:#5d6878;
+  --accent:#4f9dff; --good:#3fb950; --warn:#d29922; --bad:#f85149; --violet:#a371f7;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.5 "Segoe UI",system-ui,sans-serif;display:flex;height:100vh;overflow:hidden}
+nav{width:210px;flex:0 0 210px;background:var(--panel2);border-right:1px solid var(--line);
+  padding:16px 0;display:flex;flex-direction:column}
+.brand{padding:0 18px 16px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.brand h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-0.01em}
+.brand span{color:var(--dim);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+nav a{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--muted);
+  text-decoration:none;font-size:13px;border-left:2px solid transparent}
+nav a .n{width:19px;height:19px;border-radius:50%;border:1px solid var(--line2);
+  display:grid;place-items:center;font-size:10px;color:var(--dim);flex:0 0 19px}
+nav a.on{color:var(--text);background:#1e2531;border-left-color:var(--accent)}
+nav a.on .n{border-color:var(--accent);color:var(--accent)}
+nav a.done .n{background:var(--good);border-color:var(--good);color:#0d1117}
+.navfoot{margin-top:auto;padding:12px 18px 0;border-top:1px solid var(--line);color:var(--dim);font-size:11px}
+main{flex:1;overflow:auto;padding:22px 26px}
+header.page{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+header.page h2{margin:0;font-size:19px;font-weight:600}
+header.page p{margin:3px 0 0;color:var(--muted);font-size:13px}
+.actions{display:flex;gap:8px}
+button{font:inherit;font-size:13px;padding:7px 14px;border-radius:6px;cursor:pointer;
+  background:#222a35;color:var(--text);border:1px solid var(--line2)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px 17px;margin-bottom:14px}
+.card h3{margin:0 0 3px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.card .sub{color:var(--muted);font-size:12px;margin:0 0 12px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;
+  letter-spacing:.05em;padding:7px 9px;border-bottom:1px solid var(--line2);white-space:nowrap}
+td{padding:7px 9px;border-bottom:1px solid #20262f;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr.sel td{background:#1e2735}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px}
+.tag{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.03em}
+.t-op{background:rgba(63,185,80,.15);color:var(--good);border:1px solid rgba(63,185,80,.35)}
+.t-re{background:rgba(139,149,165,.13);color:var(--muted);border:1px solid var(--line2)}
+.t-in{background:rgba(79,157,255,.15);color:var(--accent);border:1px solid rgba(79,157,255,.35)}
+.t-ex{background:rgba(210,153,34,.15);color:var(--warn);border:1px solid rgba(210,153,34,.35)}
+.t-ok{background:rgba(63,185,80,.15);color:var(--good)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.drop{border:1.5px dashed var(--line2);border-radius:9px;padding:22px;text-align:center;
+  background:var(--panel2);margin-bottom:12px}
+.drop.filled{border-style:solid;border-color:rgba(63,185,80,.4);background:rgba(63,185,80,.05);text-align:left;padding:15px 17px}
+.drop .big{font-size:13px;color:var(--muted)}
+.warn{display:flex;gap:9px;align-items:flex-start;background:rgba(210,153,34,.09);
+  border:1px solid rgba(210,153,34,.3);border-radius:7px;padding:10px 13px;font-size:12.5px;margin-bottom:14px}
+.warn b{color:var(--warn)}
+.ctl{display:flex;align-items:center;gap:11px;margin-bottom:11px;font-size:12.5px}
+.ctl label{width:128px;color:var(--muted);flex:0 0 128px}
+.ctl input[type=range]{flex:1;accent-color:var(--accent)}
+.ctl .val{width:62px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+.seg span{padding:5px 11px;font-size:12px;color:var(--muted);border-right:1px solid var(--line2)}
+.seg span:last-child{border-right:none}
+.seg span.on{background:var(--accent);color:#06101f;font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:9px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.phgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:4px}
+.ph{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:9px 11px}
+.ph .lbl{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+.ph .v{font-size:14px;font-variant-numeric:tabular-nums;margin-top:2px}
+.ph .a{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pa{color:var(--bad)} .pb{color:var(--good)} .pc{color:var(--accent)}
+.navsep{padding:14px 18px 6px;color:var(--dim);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;border-top:1px solid var(--line);margin-top:10px}
+nav a .n.ico{font-size:11px;color:var(--muted);border-color:var(--line2)}
+nav a.on .n.ico{color:var(--accent)}
+
+.tip{position:relative;display:inline-flex;align-items:center;gap:4px;cursor:help}
+.tip>.q{display:inline-grid;place-items:center;width:13px;height:13px;border-radius:50%;
+  border:1px solid var(--line2);color:var(--dim);font-size:9px;line-height:1;flex:0 0 13px}
+.tip:hover>.q,.tip.open>.q{border-color:var(--accent);color:var(--accent)}
+.tipbox{position:absolute;left:-6px;top:calc(100% + 8px);width:286px;background:#0e1116;
+  border:1px solid var(--line2);border-radius:8px;padding:11px 13px;z-index:40;
+  box-shadow:0 12px 30px rgba(0,0,0,.6);display:none;
+  font-size:12px;line-height:1.55;color:var(--text);white-space:normal;text-align:left;
+  font-weight:400;text-transform:none;letter-spacing:0}
+.tip:hover .tipbox,.tip.open .tipbox{display:block}
+.tip.right .tipbox{left:auto;right:-6px}
+.tipbox b{display:block;color:var(--accent);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:5px;font-weight:600}
+.tipbox .tcode{display:block;margin-top:7px;padding:6px 8px;background:#161b22;border-radius:5px;
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:11px;color:var(--good)}
+th .tip{color:var(--muted)}
+
+.swatches{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.sw{width:34px;height:34px;border-radius:7px;border:2px solid transparent;cursor:pointer}
+.sw.on{border-color:var(--text)}
+.themegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.theme{border:1.5px solid var(--line);border-radius:8px;padding:10px;cursor:pointer;background:var(--panel2)}
+.theme.on{border-color:var(--accent)}
+.theme .bars{display:flex;gap:3px;height:28px;margin-bottom:7px}
+.theme .bars i{flex:1;border-radius:3px}
+.theme .nm{font-size:12px}
+.rowline{display:flex;align-items:center;justify-content:space-between;padding:9px 0;
+  border-bottom:1px solid #20262f;font-size:12.5px}
+.rowline:last-child{border-bottom:none}
+.rowline .lbl{color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;
+  border:1px solid var(--line2);background:var(--panel2);font-size:12px;color:var(--muted)}
+.search{width:100%;padding:8px 11px;border-radius:7px;border:1px solid var(--line2);
+  background:var(--panel2);color:var(--text);font:inherit;font-size:13px}
+.linkbtn{color:var(--accent);cursor:pointer}
+.sgn{font:inherit;font-size:11px;padding:3px 5px;border-radius:5px;background:var(--panel2);
+  color:var(--muted);border:1px solid var(--line2);min-width:88px}
+.sgn.pass{color:var(--good);border-color:rgba(63,185,80,.35)}
+.sgn.fail{color:var(--bad);border-color:rgba(248,81,73,.35)}
+.sgn.skip{color:var(--warn);border-color:rgba(210,153,34,.35)}
+.sgn.neutral{color:var(--muted);border-color:var(--line2)}
+tr.pick{cursor:pointer}
+tr.pick:hover td{background:#1b2230}
+tr.pick.sel td{background:#1e2735}
+.toast{position:fixed;right:22px;bottom:22px;z-index:200;display:flex;align-items:center;gap:9px;
+  background:#152a1b;border:1px solid rgba(63,185,80,.45);color:#b9f0c4;border-radius:9px;
+  padding:11px 15px;font-size:13px;box-shadow:0 14px 34px rgba(0,0,0,.55);
+  opacity:0;transform:translateY(9px);transition:opacity .16s,transform .16s}
+.toast.in{opacity:1;transform:translateY(0)}
+.toast .ok{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;
+  background:#3fb950;color:#0d1117;font-size:11px;font-weight:700}
+.swatchin{width:26px;height:22px;padding:0;border:1px solid var(--line2);border-radius:5px;
+  background:transparent;cursor:pointer}
+
+/* Calculation record: formula, substitution, result -- one line each. */
+.math{display:grid;grid-template-columns:auto 18px 1fr;align-items:baseline;
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;line-height:1.75;
+  background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+  padding:11px 14px;margin:9px 0 0;overflow-x:auto}
+.math .l{color:var(--accent);text-align:right;padding-right:7px;white-space:nowrap}
+.math .e{color:var(--dim);text-align:center}
+.math .r{color:var(--text);white-space:nowrap}
+.math .r em{color:var(--muted);font-style:normal}
+.why{color:var(--muted);font-size:12px;margin:8px 0 0;line-height:1.6}
+.ref{font-family:"Cascadia Mono",Consolas,monospace;font-size:11px;color:var(--violet)}
+.sec{margin-bottom:18px}
+.sec>h4{display:flex;align-items:center;gap:9px;margin:0 0 4px;font-size:14px;font-weight:600}
+.sec>h4 .badge{display:inline-grid;place-items:center;width:21px;height:21px;border-radius:5px;
+  background:#242c38;color:var(--accent);font-size:11px;font-weight:700}
+.toc{position:sticky;top:0}
+.toc a{display:block;padding:6px 9px;border-radius:6px;color:var(--muted);text-decoration:none;
+  font-size:12.5px;border-left:2px solid transparent}
+.toc a:hover{background:var(--panel2);color:var(--text)}
+.toc a.on{background:#1e2531;color:var(--text);border-left-color:var(--accent)}
+.chk{display:flex;gap:9px;align-items:flex-start;background:rgba(63,185,80,.07);
+  border:1px solid rgba(63,185,80,.28);border-radius:7px;padding:10px 13px;margin-top:10px;font-size:12.5px}
+.chk b{color:var(--good)}
+.excl li{margin-bottom:5px}
+.signbox{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px}
+.signbox .fld{border-bottom:1px solid var(--line2);padding:16px 2px 6px;color:var(--dim);font-size:11.5px}
+.sgnp{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;
+  border:1px solid var(--line2);background:var(--panel2)}
+.sgnp.pass{color:var(--good);border-color:rgba(63,185,80,.35)}
+.sgnp.fail{color:var(--bad);border-color:rgba(248,81,73,.35)}
+.sgnp.skip{color:var(--warn);border-color:rgba(210,153,34,.35)}
+.sgnp.neutral{color:var(--muted);border-color:var(--line2)}
+.cell{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel2);
+  border:1px solid var(--line2);border-radius:5px;padding:4px 8px;width:100%}
+.cell:focus{outline:none;border-color:var(--accent)}
+.initials{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;
+  background:#242c38;color:var(--accent);font-size:11px;font-weight:600}
+.endlbl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+.namewrap{display:flex;align-items:center;gap:7px;margin:3px 0 2px}
+.nameedit{font:inherit;font-size:15px;font-weight:600;color:var(--text);background:transparent;
+  border:1px solid transparent;border-radius:6px;padding:4px 8px;margin-left:-8px;flex:1;min-width:0}
+.nameedit:hover{border-color:var(--line2);background:var(--panel2)}
+.nameedit.active{border-color:var(--accent);background:var(--panel2);outline:none;
+  box-shadow:0 0 0 3px rgba(79,157,255,.16)}
+.pencil{color:var(--dim);font-size:13px;cursor:pointer}
+.nameedit:hover+.pencil,.nameedit.active+.pencil{color:var(--accent)}
+.src{font-size:11px;color:var(--dim);margin-bottom:10px;display:flex;align-items:center;gap:5px}
+.src .tip>.q{width:12px;height:12px;font-size:8px}
+
+</style></head>
+<body>
+  <nav>
+    <div class="brand"><h1>Ender</h1><span>87L / 21 test builder</span></div>
+    <a href="01-settings.html" class="done"><span class="n">✓</span>Settings files</a>
+    <a href="02-system.html" class="done"><span class="n">✓</span>Line &amp; system</a>
+    <a href="03-distance.html" class="done"><span class="n">✓</span>Distance (21)</a>
+    <a href="04-differential.html" class="done"><span class="n">✓</span>Differential (87L)</a>
+    <a href="05-report.html" class="done"><span class="n">✓</span>Report</a>
+    <a href="06-findings.html" class="on"><span class="n">6</span>Findings</a>
+    <div class="navsep">Library</div>
+    <a href="07-reports.html" class=""><span class="n ico">▤</span>Saved reports</a>
+    <div class="navsep">Settings</div>
+    <a href="09-config.html" class=""><span class="n ico">⚙</span>System settings</a>
+    <a href="08-appearance.html" class=""><span class="n ico">◐</span>Appearance</a>
+    <div class="navfoot"><span data-nm="local" data-short="1">ALPHA</span> – <span data-nm="remote" data-short="1">BRAVO</span><br>Line 1 · 345 kV · 42.7 mi</div>
+  </nav>
+  <main>
+    <header class="page">
+      <div><h2>Findings &amp; calculation record</h2>
+      <p>Every result traced from the settings file to the number, so a reviewer can check it
+        without re-deriving it themselves.</p></div>
+      <div class="actions"><button>← Back</button><button>Copy as text</button>
+        <button class="primary">Export record (PDF)</button></div>
+    </header>
+
+    <div style="display:grid;grid-template-columns:214px 1fr;gap:16px;align-items:start">
+      <div class="card toc" style="margin:0;padding:11px">
+        <p class="sub" style="margin:0 0 7px;padding-left:9px">Contents</p>
+        <a href="#secP" class="on">Provenance</a>
+        <a href="#secA">A · Inputs</a>
+        <a href="#secB">B · Derived constants</a>
+        <a href="#secC">C · Test derivations</a>
+        <a href="#secD">D · Alpha plane</a>
+        <a href="#secE">E · Assumptions</a>
+        <a href="#secF">F · Reviewer sign-off</a>
+        <div style="border-top:1px solid var(--line);margin:9px 0 0;padding:9px 9px 0;color:var(--dim);font-size:11px">
+          12 test points<br>10 traced inputs<br>Record ID R-0232
+        </div>
+      </div>
+
+      <div>
+        <div class="card sec" id="secP">
+          <h4><span class="badge">●</span>Provenance</h4>
+          <p class="sub">What this record was built from. The fingerprints are what make it
+            falsifiable — if a setting changes afterwards, this record no longer matches.</p>
+          <table>
+            <tr><th>Source</th><th>File</th><th>SHA-256</th><th>Relay</th><th>Serial</th></tr>
+            <tr><td>Local</td><td class="mono">ALPHA_LN1_Settings.html</td>
+              <td class="mono" style="color:var(--muted)">9f2c…a41e</td>
+              <td>SEL-411L</td><td class="mono">1142730612</td></tr>
+            <tr><td>Remote</td><td class="mono">BRAVO_LN1_Settings.html</td>
+              <td class="mono" style="color:var(--muted)">4d81…c07b</td>
+              <td>SEL-411L</td><td class="mono">1142730619</td></tr>
+          </table>
+          <div class="rowline" style="margin-top:10px"><span class="lbl">Fault model</span>
+            <span>Constant test current, Iₜ = 5.000 A secondary</span></div>
+          <div class="rowline"><span class="lbl">Software</span><span>Ender 0.1.0</span></div>
+          <div class="rowline"><span class="lbl">Generated</span><span>2026-11-01</span></div>
+        </div>
+
+        <div class="card sec" id="secA">
+          <h4><span class="badge">A</span>Inputs</h4>
+          <p class="sub">Every quantity the calculation starts from. Later sections cite these tags,
+            so no number appears without a stated origin.</p>
+          <table>
+            <tr><th>Ref</th><th>Symbol</th><th>Setting</th><th>Value</th><th>Origin</th></tr>
+        <tr>
+        <td><span class="ref">[I-01]</span></td>
+        <td>Z₁</td>
+        <td class="mono" style="color:var(--muted)">Z1MAG ∠ Z1ANG</td>
+        <td class="num">8.320 Ω ∠ 84.50°</td>
+        <td><span class="tag t-ok">both files agree</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-02]</span></td>
+        <td>Z₀</td>
+        <td class="mono" style="color:var(--muted)">Z0MAG ∠ Z0ANG</td>
+        <td class="num">24.500 Ω ∠ 78.20°</td>
+        <td><span class="tag t-ok">both files agree</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-03]</span></td>
+        <td>Z₁ₚ (Zone 1)</td>
+        <td class="mono" style="color:var(--muted)">Z1P</td>
+        <td class="num">7.070 Ω</td>
+        <td><span class="tag t-ok">both files agree</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-04]</span></td>
+        <td>Z₂ₚ (Zone 2)</td>
+        <td class="mono" style="color:var(--muted)">Z2P</td>
+        <td class="num">12.480 Ω</td>
+        <td><span class="tag t-ok">both files agree</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-05]</span></td>
+        <td>Z₃ₚ (Zone 3)</td>
+        <td class="mono" style="color:var(--muted)">Z3P</td>
+        <td class="num">20.800 Ω</td>
+        <td><span class="tag t-ok">both files agree</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-06]</span></td>
+        <td>R₇</td>
+        <td class="mono" style="color:var(--muted)">87LR</td>
+        <td class="num">6.000</td>
+        <td><span class="tag t-ok">both files agree</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-07]</span></td>
+        <td>θ₇</td>
+        <td class="mono" style="color:var(--muted)">87LANG</td>
+        <td class="num">195.00°</td>
+        <td><span class="tag t-ok">both files agree</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-08]</span></td>
+        <td>Iₜ</td>
+        <td class="mono" style="color:var(--muted)">—</td>
+        <td class="num">5.000 A sec</td>
+        <td><span class="tag t-ex">operator entry</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-09]</span></td>
+        <td>kᵢ</td>
+        <td class="mono" style="color:var(--muted)">—</td>
+        <td class="num">0.650</td>
+        <td><span class="tag t-ex">operator entry</span></td>
+      </tr>
+        <tr>
+        <td><span class="ref">[I-10]</span></td>
+        <td>Vₙ</td>
+        <td class="mono" style="color:var(--muted)">—</td>
+        <td class="num">67.00 V L–N</td>
+        <td><span class="tag t-ex">operator entry</span></td>
+      </tr>
+          </table>
+          <p class="why">Entries marked <span class="tag t-ex">operator entry</span> are not in the
+            relay. They are choices, and a reviewer is entitled to disagree with them — which is
+            why they are listed separately rather than mixed in with the settings.</p>
+        </div>
+
+        <div class="card sec" id="secB">
+          <h4><span class="badge">B</span>Derived constants</h4>
+          <p class="sub">Computed once and reused by every ground-loop test point below.</p>
+          
+      <div class="math"><span class="l">k₀</span><span class="e">=</span><span class="r">(Z₀ − Z₁) / (3 · Z₁)  <em><span class="ref">[I-02]</span> <span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">(24.500 Ω ∠ 78.20° − 8.320 Ω ∠ 84.50°) / (3 · 8.320 Ω ∠ 84.50°)</span><span class="l"></span><span class="e">=</span><span class="r">(5.010 + j23.982 − (0.797 + j8.282)) / 24.960 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r">(4.213 + j15.701)  /  24.960 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r">16.256 Ω ∠ 74.98°  /  24.960 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>0.6513 ∠ −9.52°</b></span></div>
+      <p class="why">Subtraction is done in rectangular form and division in polar form, which is why
+        both appear. k₀ is dimensionless — the ohms cancel.</p>
+
+      <div class="math"><span class="l">1 + k₀</span><span class="e">=</span><span class="r">1 + 0.6513 ∠ −9.52°</span><span class="l"></span><span class="e">=</span><span class="r">1 + (0.6423 − j0.1077)</span><span class="l"></span><span class="e">=</span><span class="r">1.6423 − j0.1077</span><span class="l"></span><span class="e">=</span><span class="r"><b>1.6458 ∠ −3.75°</b></span></div>
+      <p class="why">Every phase-to-ground loop impedance is multiplied by this. A ground fault at a
+        given distance presents 1.646× the impedance a phase fault does at the same
+        distance, which is exactly what the residual compensation in the relay removes.</p>
+        </div>
+
+        <div class="card sec" id="secC">
+          <h4><span class="badge">C</span>Test point derivations</h4>
+          <p class="sub">One block per test point. The exported PDF contains all 12;
+            pick one here to read it on screen.</p>
+          <select id="tsel" class="cell" style="max-width:360px;margin-bottom:14px"><option value="0">Test 01 · Zone 1 A–G In zone</option><option value="1">Test 02 · Zone 1 A–G Out of zone</option><option value="2">Test 03 · Zone 1 B–C In zone</option><option value="3">Test 04 · Zone 1 B–C Out of zone</option><option value="4">Test 05 · Zone 1 ABC In zone</option><option value="5">Test 06 · Zone 1 ABC Out of zone</option><option value="6">Test 07 · Zone 2 A–G In zone</option><option value="7">Test 08 · Zone 2 A–G Out of zone</option><option value="8">Test 09 · Zone 2 B–C In zone</option><option value="9">Test 10 · Zone 2 B–C Out of zone</option><option value="10">Test 11 · Zone 2 ABC In zone</option><option value="11">Test 12 · Zone 2 ABC Out of zone</option></select>
+          <div class="tblock" id="tc-0" style="display:block">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 01
+        · Zone 1 A–G In zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-ground fault at 85% of the Zone 1 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 1) · p   <em><span class="ref">[I-03]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.070 Ω · 0.850</span><span class="l"></span><span class="e">=</span><span class="r"><b>6.010 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">6.010 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>72.2 %</b> of the protected line</span></div>
+      <p class="why">d ≤ 100 %, so the fault is
+        <b>between the two current transformers</b> and the
+        differential must <b>OPERATE</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf · (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r">6.010 Ω ∠ 84.50° · 1.6458 ∠ −3.75°</span><span class="l"></span><span class="e">=</span><span class="r"><b>9.891 Ω ∠ 80.75°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐ</span><span class="e">=</span><span class="r">Iₜ · |Zₗₒₒₚ|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 9.891 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>49.45 V ∠ 0.00°</b></span><span class="l">Iₐ</span><span class="e">=</span><span class="r">Iₜ ∠ −∠Zₗₒₒₚ</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A ∠ −(80.75°)</span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A ∠ −80.75°</b></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Z₁ − Zf   <em>(remote bus to fault)</em></span><span class="l"></span><span class="e">=</span><span class="r">8.320 Ω ∠ 84.50° − 6.010 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>2.311 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ · kᵢ   <em><span class="ref">[I-09]</span></em></span><span class="l"></span><span class="e">=</span><span class="r"><b>3.250 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>12.36 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>3.250 A ∠ −80.75°</b></span></div>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 1 distance</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">p = 85% < 100% → inside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">d = 72.2% ≤ 100% → internal</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vₐ / Iₐ) / (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r"><b>6.010 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|6.010 − 6.010| = <b>8.9e-16 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 8.9e-16 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-1" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 02
+        · Zone 1 A–G Out of zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-ground fault at 110% of the Zone 1 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 1) · p   <em><span class="ref">[I-03]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.070 Ω · 1.100</span><span class="l"></span><span class="e">=</span><span class="r"><b>7.777 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.777 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>93.5 %</b> of the protected line</span></div>
+      <p class="why">d ≤ 100 %, so the fault is
+        <b>between the two current transformers</b> and the
+        differential must <b>OPERATE</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf · (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r">7.777 Ω ∠ 84.50° · 1.6458 ∠ −3.75°</span><span class="l"></span><span class="e">=</span><span class="r"><b>12.800 Ω ∠ 80.75°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐ</span><span class="e">=</span><span class="r">Iₜ · |Zₗₒₒₚ|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 12.800 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>64.00 V ∠ 0.00°</b></span><span class="l">Iₐ</span><span class="e">=</span><span class="r">Iₜ ∠ −∠Zₗₒₒₚ</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A ∠ −(80.75°)</span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A ∠ −80.75°</b></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Z₁ − Zf   <em>(remote bus to fault)</em></span><span class="l"></span><span class="e">=</span><span class="r">8.320 Ω ∠ 84.50° − 7.777 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>0.543 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ · kᵢ   <em><span class="ref">[I-09]</span></em></span><span class="l"></span><span class="e">=</span><span class="r"><b>3.250 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>2.90 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>3.250 A ∠ −80.75°</b></span></div>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 1 distance</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">p = 110% > 100% → outside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">d = 93.5% ≤ 100% → internal</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vₐ / Iₐ) / (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r"><b>7.777 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|7.777 − 7.777| = <b>1.8e-15 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 1.8e-15 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-2" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 03
+        · Zone 1 B–C In zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-phase fault at 85% of the Zone 1 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 1) · p   <em><span class="ref">[I-03]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.070 Ω · 0.850</span><span class="l"></span><span class="e">=</span><span class="r"><b>6.010 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">6.010 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>72.2 %</b> of the protected line</span></div>
+      <p class="why">d ≤ 100 %, so the fault is
+        <b>between the two current transformers</b> and the
+        differential must <b>OPERATE</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">2 · Zf   <em>(phase loop, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r">2 · 6.010 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>12.019 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · 2 · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 2 · 6.010 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>60.09 V ∠ −90.00°</b></span><span class="l">Vᵦ</span><span class="e">=</span><span class="r">(−Vₐ + Vᵦᶜ) / 2  →  <b>45.00 V ∠ −138.11°</b></span><span class="l">Vᶜ</span><span class="e">=</span><span class="r">(−Vₐ − Vᵦᶜ) / 2  →  <b>45.00 V ∠ 138.11°</b></span><span class="l">Iᵦ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −174.50°</b>  <em>(Iᶜ = −Iᵦ)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Z₁ − Zf   <em>(remote bus to fault)</em></span><span class="l"></span><span class="e">=</span><span class="r">8.320 Ω ∠ 84.50° − 6.010 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>2.311 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ · kᵢ   <em><span class="ref">[I-09]</span></em></span><span class="l"></span><span class="e">=</span><span class="r"><b>3.250 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>67.00 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>0.000 A ∠ 0.00°</b></span></div>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 1 distance</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">p = 85% < 100% → inside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">d = 72.2% ≤ 100% → internal</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vᵦ − Vᶜ) / (Iᵦ − Iᶜ)</span><span class="l"></span><span class="e">=</span><span class="r"><b>6.009 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|6.009 − 6.010| = <b>8.9e-16 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 8.9e-16 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-3" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 04
+        · Zone 1 B–C Out of zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-phase fault at 110% of the Zone 1 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 1) · p   <em><span class="ref">[I-03]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.070 Ω · 1.100</span><span class="l"></span><span class="e">=</span><span class="r"><b>7.777 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.777 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>93.5 %</b> of the protected line</span></div>
+      <p class="why">d ≤ 100 %, so the fault is
+        <b>between the two current transformers</b> and the
+        differential must <b>OPERATE</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">2 · Zf   <em>(phase loop, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r">2 · 7.777 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>15.554 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · 2 · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 2 · 7.777 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>77.77 V ∠ −90.00°</b></span><span class="l">Vᵦ</span><span class="e">=</span><span class="r">(−Vₐ + Vᵦᶜ) / 2  →  <b>51.33 V ∠ −130.75°</b></span><span class="l">Vᶜ</span><span class="e">=</span><span class="r">(−Vₐ − Vᵦᶜ) / 2  →  <b>51.33 V ∠ 130.75°</b></span><span class="l">Iᵦ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −174.50°</b>  <em>(Iᶜ = −Iᵦ)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Z₁ − Zf   <em>(remote bus to fault)</em></span><span class="l"></span><span class="e">=</span><span class="r">8.320 Ω ∠ 84.50° − 7.777 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>0.543 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ · kᵢ   <em><span class="ref">[I-09]</span></em></span><span class="l"></span><span class="e">=</span><span class="r"><b>3.250 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>67.00 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>0.000 A ∠ 0.00°</b></span></div>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 1 distance</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">p = 110% > 100% → outside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">d = 93.5% ≤ 100% → internal</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vᵦ − Vᶜ) / (Iᵦ − Iᶜ)</span><span class="l"></span><span class="e">=</span><span class="r"><b>7.777 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|7.777 − 7.777| = <b>8.9e-16 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 8.9e-16 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-4" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 05
+        · Zone 1 ABC In zone</h5>
+      <p class="why" style="margin-top:0">Three-phase fault at 85% of the Zone 1 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 1) · p   <em><span class="ref">[I-03]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.070 Ω · 0.850</span><span class="l"></span><span class="e">=</span><span class="r"><b>6.010 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">6.010 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>72.2 %</b> of the protected line</span></div>
+      <p class="why">d ≤ 100 %, so the fault is
+        <b>between the two current transformers</b> and the
+        differential must <b>OPERATE</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf   <em>(balanced, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>6.010 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 6.010 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>30.05 V</b> each phase, 120° apart</span><span class="l">Iₐ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −84.50°</b>  <em>(B, C at ∓120°)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Z₁ − Zf   <em>(remote bus to fault)</em></span><span class="l"></span><span class="e">=</span><span class="r">8.320 Ω ∠ 84.50° − 6.010 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>2.311 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ · kᵢ   <em><span class="ref">[I-09]</span></em></span><span class="l"></span><span class="e">=</span><span class="r"><b>3.250 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>7.51 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>3.250 A ∠ −84.50°</b></span></div>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 1 distance</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">p = 85% < 100% → inside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">d = 72.2% ≤ 100% → internal</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">Vₐ / Iₐ</span><span class="l"></span><span class="e">=</span><span class="r"><b>6.009 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|6.009 − 6.010| = <b>8.9e-16 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 8.9e-16 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-5" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 06
+        · Zone 1 ABC Out of zone</h5>
+      <p class="why" style="margin-top:0">Three-phase fault at 110% of the Zone 1 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 1) · p   <em><span class="ref">[I-03]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.070 Ω · 1.100</span><span class="l"></span><span class="e">=</span><span class="r"><b>7.777 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">7.777 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>93.5 %</b> of the protected line</span></div>
+      <p class="why">d ≤ 100 %, so the fault is
+        <b>between the two current transformers</b> and the
+        differential must <b>OPERATE</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf   <em>(balanced, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>7.777 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 7.777 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>38.89 V</b> each phase, 120° apart</span><span class="l">Iₐ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −84.50°</b>  <em>(B, C at ∓120°)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Z₁ − Zf   <em>(remote bus to fault)</em></span><span class="l"></span><span class="e">=</span><span class="r">8.320 Ω ∠ 84.50° − 7.777 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>0.543 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ · kᵢ   <em><span class="ref">[I-09]</span></em></span><span class="l"></span><span class="e">=</span><span class="r"><b>3.250 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>1.76 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>3.250 A ∠ −84.50°</b></span></div>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 1 distance</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">p = 110% > 100% → outside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">d = 93.5% ≤ 100% → internal</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">Vₐ / Iₐ</span><span class="l"></span><span class="e">=</span><span class="r"><b>7.777 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|7.777 − 7.777| = <b>8.9e-16 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 8.9e-16 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-6" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 07
+        · Zone 2 A–G In zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-ground fault at 85% of the Zone 2 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 2) · p   <em><span class="ref">[I-04]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">12.480 Ω · 0.850</span><span class="l"></span><span class="e">=</span><span class="r"><b>10.608 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">10.608 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>127.5 %</b> of the protected line</span></div>
+      <p class="why">d > 100 %, so the fault is
+        <b>beyond the far bus</b> and the
+        differential must <b>RESTRAIN</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf · (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r">10.608 Ω ∠ 84.50° · 1.6458 ∠ −3.75°</span><span class="l"></span><span class="e">=</span><span class="r"><b>17.459 Ω ∠ 80.75°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐ</span><span class="e">=</span><span class="r">Iₜ · |Zₗₒₒₚ|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 17.459 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>87.30 V ∠ 0.00°</b></span><span class="l">Iₐ</span><span class="e">=</span><span class="r">Iₜ ∠ −∠Zₗₒₒₚ</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A ∠ −(80.75°)</span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A ∠ −80.75°</b></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Zf − Z₁   <em>(fault beyond the remote bus)</em></span><span class="l"></span><span class="e">=</span><span class="r">10.608 Ω ∠ 84.50° − 8.320 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>2.288 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ   <em>(through current, same path)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>18.83 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>5.000 A ∠ 99.25°</b></span></div>
+      <p class="why">Past the far bus the two ends see the same current in series,
+        so the remote current reverses through its CT — the 180° difference from the local
+        angle is the signature the differential uses to restrain.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 2 distance</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">p = 85% < 100% → inside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">d = 127.5% > 100% → external</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vₐ / Iₐ) / (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r"><b>10.608 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|10.608 − 10.608| = <b>3.6e-15 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 3.6e-15 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-7" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 08
+        · Zone 2 A–G Out of zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-ground fault at 110% of the Zone 2 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 2) · p   <em><span class="ref">[I-04]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">12.480 Ω · 1.100</span><span class="l"></span><span class="e">=</span><span class="r"><b>13.728 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">13.728 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>165.0 %</b> of the protected line</span></div>
+      <p class="why">d > 100 %, so the fault is
+        <b>beyond the far bus</b> and the
+        differential must <b>RESTRAIN</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf · (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r">13.728 Ω ∠ 84.50° · 1.6458 ∠ −3.75°</span><span class="l"></span><span class="e">=</span><span class="r"><b>22.594 Ω ∠ 80.75°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐ</span><span class="e">=</span><span class="r">Iₜ · |Zₗₒₒₚ|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 22.594 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>112.97 V ∠ 0.00°</b></span><span class="l">Iₐ</span><span class="e">=</span><span class="r">Iₜ ∠ −∠Zₗₒₒₚ</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A ∠ −(80.75°)</span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A ∠ −80.75°</b></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      <div class="warn" style="margin:10px 0 0"><b>⚠</b><div>This point needs
+        112.97 V on the faulted phase, above the 101 V threshold.
+        The constant-current model does not bound voltage; a real source could not produce this.
+        Reduce Iₜ <span class="ref">[I-08]</span> or use the source-impedance model.</div></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Zf − Z₁   <em>(fault beyond the remote bus)</em></span><span class="l"></span><span class="e">=</span><span class="r">13.728 Ω ∠ 84.50° − 8.320 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>5.408 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ   <em>(through current, same path)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>44.50 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>5.000 A ∠ 99.25°</b></span></div>
+      <p class="why">Past the far bus the two ends see the same current in series,
+        so the remote current reverses through its CT — the 180° difference from the local
+        angle is the signature the differential uses to restrain.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 2 distance</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">p = 110% > 100% → outside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">d = 165.0% > 100% → external</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vₐ / Iₐ) / (1 + k₀)</span><span class="l"></span><span class="e">=</span><span class="r"><b>13.728 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|13.728 − 13.728| = <b>1.8e-15 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 1.8e-15 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-8" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 09
+        · Zone 2 B–C In zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-phase fault at 85% of the Zone 2 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 2) · p   <em><span class="ref">[I-04]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">12.480 Ω · 0.850</span><span class="l"></span><span class="e">=</span><span class="r"><b>10.608 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">10.608 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>127.5 %</b> of the protected line</span></div>
+      <p class="why">d > 100 %, so the fault is
+        <b>beyond the far bus</b> and the
+        differential must <b>RESTRAIN</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">2 · Zf   <em>(phase loop, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r">2 · 10.608 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>21.216 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · 2 · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 2 · 10.608 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>106.08 V ∠ −90.00°</b></span><span class="l">Vᵦ</span><span class="e">=</span><span class="r">(−Vₐ + Vᵦᶜ) / 2  →  <b>62.73 V ∠ −122.28°</b></span><span class="l">Vᶜ</span><span class="e">=</span><span class="r">(−Vₐ − Vᵦᶜ) / 2  →  <b>62.73 V ∠ 122.28°</b></span><span class="l">Iᵦ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −174.50°</b>  <em>(Iᶜ = −Iᵦ)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Zf − Z₁   <em>(fault beyond the remote bus)</em></span><span class="l"></span><span class="e">=</span><span class="r">10.608 Ω ∠ 84.50° − 8.320 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>2.288 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ   <em>(through current, same path)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>67.00 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>0.000 A ∠ 180.00°</b></span></div>
+      <p class="why">Past the far bus the two ends see the same current in series,
+        so the remote current reverses through its CT — the 180° difference from the local
+        angle is the signature the differential uses to restrain.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 2 distance</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">p = 85% < 100% → inside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">d = 127.5% > 100% → external</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vᵦ − Vᶜ) / (Iᵦ − Iᶜ)</span><span class="l"></span><span class="e">=</span><span class="r"><b>10.608 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|10.608 − 10.608| = <b>0.0e+0 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 0.0e+0 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-9" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 10
+        · Zone 2 B–C Out of zone</h5>
+      <p class="why" style="margin-top:0">Phase-to-phase fault at 110% of the Zone 2 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 2) · p   <em><span class="ref">[I-04]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">12.480 Ω · 1.100</span><span class="l"></span><span class="e">=</span><span class="r"><b>13.728 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">13.728 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>165.0 %</b> of the protected line</span></div>
+      <p class="why">d > 100 %, so the fault is
+        <b>beyond the far bus</b> and the
+        differential must <b>RESTRAIN</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">2 · Zf   <em>(phase loop, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r">2 · 13.728 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>27.456 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · 2 · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 2 · 13.728 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>137.28 V ∠ −90.00°</b></span><span class="l">Vᵦ</span><span class="e">=</span><span class="r">(−Vₐ + Vᵦᶜ) / 2  →  <b>76.38 V ∠ −116.01°</b></span><span class="l">Vᶜ</span><span class="e">=</span><span class="r">(−Vₐ − Vᵦᶜ) / 2  →  <b>76.38 V ∠ 116.01°</b></span><span class="l">Iᵦ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −174.50°</b>  <em>(Iᶜ = −Iᵦ)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Zf − Z₁   <em>(fault beyond the remote bus)</em></span><span class="l"></span><span class="e">=</span><span class="r">13.728 Ω ∠ 84.50° − 8.320 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>5.408 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ   <em>(through current, same path)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>67.00 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>0.000 A ∠ 180.00°</b></span></div>
+      <p class="why">Past the far bus the two ends see the same current in series,
+        so the remote current reverses through its CT — the 180° difference from the local
+        angle is the signature the differential uses to restrain.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 2 distance</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">p = 110% > 100% → outside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">d = 165.0% > 100% → external</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">(Vᵦ − Vᶜ) / (Iᵦ − Iᶜ)</span><span class="l"></span><span class="e">=</span><span class="r"><b>13.728 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|13.728 − 13.728| = <b>1.8e-15 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 1.8e-15 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-10" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 11
+        · Zone 2 ABC In zone</h5>
+      <p class="why" style="margin-top:0">Three-phase fault at 85% of the Zone 2 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 2) · p   <em><span class="ref">[I-04]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">12.480 Ω · 0.850</span><span class="l"></span><span class="e">=</span><span class="r"><b>10.608 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">10.608 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>127.5 %</b> of the protected line</span></div>
+      <p class="why">d > 100 %, so the fault is
+        <b>beyond the far bus</b> and the
+        differential must <b>RESTRAIN</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf   <em>(balanced, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>10.608 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 10.608 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>53.04 V</b> each phase, 120° apart</span><span class="l">Iₐ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −84.50°</b>  <em>(B, C at ∓120°)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Zf − Z₁   <em>(fault beyond the remote bus)</em></span><span class="l"></span><span class="e">=</span><span class="r">10.608 Ω ∠ 84.50° − 8.320 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>2.288 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ   <em>(through current, same path)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>11.44 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>5.000 A ∠ 95.50°</b></span></div>
+      <p class="why">Past the far bus the two ends see the same current in series,
+        so the remote current reverses through its CT — the 180° difference from the local
+        angle is the signature the differential uses to restrain.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 2 distance</td>
+          <td><span class="tag t-op">OPERATE</span></td>
+          <td style="color:var(--muted)">p = 85% < 100% → inside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">d = 127.5% > 100% → external</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">Vₐ / Iₐ</span><span class="l"></span><span class="e">=</span><span class="r"><b>10.608 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|10.608 − 10.608| = <b>0.0e+0 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 0.0e+0 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+<div class="tblock" id="tc-11" style="display:none">
+      <h5 style="margin:0 0 2px;font-size:13px">Test 12
+        · Zone 2 ABC Out of zone</h5>
+      <p class="why" style="margin-top:0">Three-phase fault at 110% of the Zone 2 reach.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.1 — Test point placement</h6>
+      <div class="math"><span class="l">Zf</span><span class="e">=</span><span class="r">Zₚ(Zone 2) · p   <em><span class="ref">[I-04]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">12.480 Ω · 1.100</span><span class="l"></span><span class="e">=</span><span class="r"><b>13.728 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.2 — Position on the line</h6>
+      <div class="math"><span class="l">d</span><span class="e">=</span><span class="r">|Zf| / |Z₁|   <em><span class="ref">[I-01]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">13.728 Ω / 8.320 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>165.0 %</b> of the protected line</span></div>
+      <p class="why">d > 100 %, so the fault is
+        <b>beyond the far bus</b> and the
+        differential must <b>RESTRAIN</b> regardless of what the distance zones do.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.3 — Loop impedance presented to the relay</h6>
+      <div class="math"><span class="l">Zₗₒₒₚ</span><span class="e">=</span><span class="r">Zf   <em>(balanced, no residual term)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>13.728 Ω ∠ 84.50°</b></span></div>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.4 — Local end (ALPHA 345 kV)</h6>
+      <div class="math"><span class="l">Vₐᵦᶜ</span><span class="e">=</span><span class="r">Iₜ · |Zf|</span><span class="l"></span><span class="e">=</span><span class="r">5.000 A · 13.728 Ω</span><span class="l"></span><span class="e">=</span><span class="r"><b>68.64 V</b> each phase, 120° apart</span><span class="l">Iₐ</span><span class="e">=</span><span class="r"><b>5.000 A ∠ −84.50°</b>  <em>(B, C at ∓120°)</em></span></div>
+      <p class="why">Voltage is referenced to the faulted phase at 0°, so the current carries the
+        loop angle. Unfaulted phases are held at Vₙ <span class="ref">[I-10]</span>.</p>
+      
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.5 — Remote end (BRAVO 345 kV)</h6>
+      <div class="math"><span class="l">Zᵣₑₘ</span><span class="e">=</span><span class="r">Zf − Z₁   <em>(fault beyond the remote bus)</em></span><span class="l"></span><span class="e">=</span><span class="r">13.728 Ω ∠ 84.50° − 8.320 Ω ∠ 84.50°</span><span class="l"></span><span class="e">=</span><span class="r"><b>5.408 Ω ∠ 84.50°</b></span><span class="l">Iᵣₑₘ</span><span class="e">=</span><span class="r">Iₜ   <em>(through current, same path)</em></span><span class="l"></span><span class="e">=</span><span class="r"><b>5.000 A</b></span><span class="l">Vₐ(rem)</span><span class="e">=</span><span class="r"><b>27.04 V ∠ 0.00°</b></span><span class="l">Iₐ(rem)</span><span class="e">=</span><span class="r"><b>5.000 A ∠ 95.50°</b></span></div>
+      <p class="why">Past the far bus the two ends see the same current in series,
+        so the remote current reverses through its CT — the 180° difference from the local
+        angle is the signature the differential uses to restrain.</p>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.6 — Expected result</h6>
+      <table style="margin-top:6px">
+        <tr><th>Element</th><th>Expected</th><th>Rule applied</th></tr>
+        <tr><td>Zone 2 distance</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">p = 110% > 100% → outside the reach</td></tr>
+        <tr><td>87L differential</td>
+          <td><span class="tag t-re">RESTRAIN</span></td>
+          <td style="color:var(--muted)">d = 165.0% > 100% → external</td></tr>
+      </table>
+
+      <h6 style="margin:14px 0 0;font-size:12px;color:var(--muted)">C.7 — Independent check</h6>
+      <div class="math"><span class="l">Zᴄʜᴇᴄᴋ</span><span class="e">=</span><span class="r">Vₐ / Iₐ</span><span class="l"></span><span class="e">=</span><span class="r"><b>13.728 Ω ∠ 84.50°</b></span><span class="l">residual</span><span class="e">=</span><span class="r">|13.728 − 13.728| = <b>1.8e-15 Ω</b></span></div>
+      <div class="chk"><b>✓</b><div>Working the derived voltages and currents back to an
+        impedance reproduces the placement value from C.1 to within 1.8e-15 Ω.
+        A reviewer can repeat this line with a calculator.</div></div>
+    </div>
+        </div>
+
+        <div class="card sec" id="secD">
+          <h4><span class="badge">D</span>Alpha plane evaluation</h4>
+          <p class="sub">The differential decision is a region test on the complex ratio of remote to
+            local current. Both inequalities must hold for the element to restrain.</p>
+          <div class="math"><span class="l">region</span><span class="e">=</span><span class="r">(1 / R₇) ≤ |Iᵣ / Iₗ| ≤ R₇   <em><span class="ref">[I-06]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">0.1667 ≤ |Iᵣ / Iₗ| ≤ 6.000</span><span class="l">and</span><span class="e">=</span><span class="r">|∠(Iᵣ / Iₗ) − 180°| ≤ θ₇ / 2   <em><span class="ref">[I-07]</span></em></span><span class="l"></span><span class="e">=</span><span class="r">|∠(Iᵣ / Iₗ) − 180°| ≤ 97.50°</span><span class="l">∴ arc</span><span class="e">=</span><span class="r">82.50° → 277.50° contains the through-current point −1</span></div>
+          <table style="margin-top:12px">
+            <tr><th>Check</th><th>Iᵣ / Iₗ</th><th>Magnitude test</th><th>Angle test</th><th>Result</th></tr>
+        <tr>
+        <td>Through load</td>
+        <td class="num">1.000 ∠ 180.00°</td>
+        <td class="num" style="color:var(--good)">0.1667 ≤ 1.000 ≤ 6.000 ✓</td>
+        <td class="num" style="color:var(--good)">0.00° ≤ 97.50° ✓</td>
+        <td><span class="tag t-re">RESTRAIN</span></td>
+      </tr>
+        <tr>
+        <td>Internal, equal infeed</td>
+        <td class="num">1.000 ∠ 0.00°</td>
+        <td class="num" style="color:var(--good)">0.1667 ≤ 1.000 ≤ 6.000 ✓</td>
+        <td class="num" style="color:var(--bad)">180.00° ≤ 97.50° ✗</td>
+        <td><span class="tag t-op">OPERATE</span></td>
+      </tr>
+        <tr>
+        <td>Angle edge, inside</td>
+        <td class="num">1.000 ∠ 265.00°</td>
+        <td class="num" style="color:var(--good)">0.1667 ≤ 1.000 ≤ 6.000 ✓</td>
+        <td class="num" style="color:var(--good)">85.00° ≤ 97.50° ✓</td>
+        <td><span class="tag t-re">RESTRAIN</span></td>
+      </tr>
+        <tr>
+        <td>Angle edge, outside</td>
+        <td class="num">1.000 ∠ 280.00°</td>
+        <td class="num" style="color:var(--good)">0.1667 ≤ 1.000 ≤ 6.000 ✓</td>
+        <td class="num" style="color:var(--bad)">100.00° ≤ 97.50° ✗</td>
+        <td><span class="tag t-op">OPERATE</span></td>
+      </tr>
+          </table>
+          <p class="why">The angle boundary sits at 277.50°, so a ratio at 265° is still
+            inside the region and must restrain, while 280° falls outside and must operate. The
+            two rows above bracket that boundary deliberately — a single test either side of it
+            is what proves the setting, and getting them the wrong way round is an easy mistake to
+            make by eye.</p>
+        </div>
+
+        <div class="card sec" id="secE">
+          <h4><span class="badge">E</span>Assumptions and exclusions</h4>
+          <p class="sub">What this record does <b>not</b> account for. A reviewer needs this as much
+            as the arithmetic — a number is only as good as what was left out of it.</p>
+          <ul class="excl" style="margin:4px 0 0;padding-left:19px;font-size:12.5px;color:var(--muted)">
+            <li>Lumped line impedance. Distributed shunt capacitance and line charging current are
+              not modelled, so 87L charging-current compensation is not represented.</li>
+            <li>No zero-sequence mutual coupling from a parallel circuit. Where one exists, ground
+              reach is affected and these points will not match a real fault.</li>
+            <li>Fault resistance taken as zero. Resistive reach of quadrilateral elements is not
+              exercised by these points.</li>
+            <li>CT and VT treated as ideal: no ratio error, no saturation, no transient response.</li>
+            <li>Pre-fault load current is not superimposed.</li>
+            <li>Source impedances <span class="ref">[I-09]</span> are operator-supplied and have not been reconciled
+              against a short-circuit study.</li>
+            <li>Steady-state phasors only. No element timing, memory polarisation, or transient
+              behaviour is calculated — this record covers pickup quantities, not operate times.</li>
+            <li>The constant-current model holds Iₜ fixed and lets voltage follow, which can
+              demand a voltage no real source would produce. Affected points are flagged in C.4.</li>
+          </ul>
+        </div>
+
+        <div class="card sec" id="secF">
+          <h4><span class="badge">F</span>Reviewer sign-off</h4>
+          <p class="sub">Checked independently of the engineer who generated it.</p>
+          <div class="signbox">
+            <div class="fld">Prepared by · date</div>
+            <div class="fld">Checked by · date</div>
+          </div>
+          <div class="signbox" style="grid-template-columns:1fr">
+            <div class="fld" style="padding-top:34px">Reviewer comments / items disputed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<script>
+/* Section C shows one derivation at a time; the PDF carries all of them. */
+(function () {
+  var sel = document.getElementById('tsel');
+  sel.onchange = function () {
+    var blocks = document.querySelectorAll('.tblock');
+    for (var i = 0; i < blocks.length; i++) {
+      blocks[i].style.display = (String(i) === sel.value) ? 'block' : 'none';
+    }
+  };
+  var links = document.querySelectorAll('.toc a');
+  for (var k = 0; k < links.length; k++) {
+    (function (a) {
+      a.onclick = function () {
+        for (var j = 0; j < links.length; j++) links[j].classList.remove('on');
+        a.classList.add('on');
+      };
+    })(links[k]);
+  }
+})();
+</script>
+  </main>
+<script>
+/*
+ * Shared runtime for every page: station names, sign-off colours, navigation
+ * and save confirmations. State lives in the main process so a rename made on
+ * one screen is already true on the next.
+ */
+(function () {
+  var ORDER = ["01-settings.html","02-system.html","03-distance.html","04-differential.html","05-report.html","06-findings.html"];
+  var DEFAULT_LABELS = [{"code":"—","text":"Not set","colour":"#8b95a5","as":"Neutral","dflt":true},{"code":"PASS","text":"Passed","colour":"#3fb950","as":"Pass","dflt":false},{"code":"FAIL","text":"Failed","colour":"#f85149","as":"Fail","dflt":false},{"code":"NOOP","text":"No operation","colour":"#d29922","as":"Skipped","dflt":false},{"code":"NO TEST","text":"Not tested","colour":"#8b95a5","as":"Skipped","dflt":false},{"code":"N/A","text":"Not applicable","colour":"#8b95a5","as":"Neutral","dflt":false},{"code":"DEFER","text":"Deferred to next outage","colour":"#d29922","as":"Skipped","dflt":false},{"code":"RETEST","text":"Retest required","colour":"#f85149","as":"Fail","dflt":false}];
+  var DEFAULT_NAMES = { local: "ALPHA 345 kV", remote: "BRAVO 345 kV" };
+  var SAVE_MSG = "Findings saved";
+
+  var state = { names: DEFAULT_NAMES, labels: DEFAULT_LABELS, signoff: {} };
+
+  function hexA(hex, a) {
+    var n = parseInt(String(hex).replace('#', ''), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function toast(msg) {
+    var el = document.createElement('div');
+    el.className = 'toast';
+    var tick = document.createElement('span');
+    tick.className = 'ok';
+    tick.textContent = '\u2713';
+    var txt = document.createElement('span');
+    txt.textContent = msg;
+    el.appendChild(tick);
+    el.appendChild(txt);
+    document.body.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('in'); });
+    setTimeout(function () {
+      el.classList.remove('in');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 220);
+    }, 2200);
+  }
+
+  function save(patch, msg) {
+    if (window.demo) window.demo.set(patch);
+    if (msg) toast(msg);
+  }
+
+  function labelFor(code) {
+    for (var i = 0; i < state.labels.length; i++) {
+      if (state.labels[i].code === code) return state.labels[i];
+    }
+    return null;
+  }
+
+  function applyNames() {
+    var els = document.querySelectorAll('[data-nm]');
+    for (var i = 0; i < els.length; i++) {
+      var v = state.names[els[i].getAttribute('data-nm')] || '';
+      if (els[i].hasAttribute('data-short')) v = v.split(' ')[0];
+      els[i].textContent = v;
+    }
+    var ins = document.querySelectorAll('[data-nmv]');
+    for (var j = 0; j < ins.length; j++) {
+      ins[j].value = state.names[ins[j].getAttribute('data-nmv')] || '';
+    }
+  }
+
+  function paint(sel) {
+    var L = labelFor(sel.value);
+    sel.style.color = L ? L.colour : '';
+    sel.style.borderColor = L ? hexA(L.colour, 0.45) : '';
+  }
+
+  function buildSelects() {
+    var sels = document.querySelectorAll('select.sgn');
+    for (var i = 0; i < sels.length; i++) {
+      (function (s) {
+        var key = s.getAttribute('data-sg');
+        var cur = (key && state.signoff[key]) || s.value;
+        s.innerHTML = '';
+        for (var j = 0; j < state.labels.length; j++) {
+          var o = document.createElement('option');
+          o.textContent = state.labels[j].code;
+          s.appendChild(o);
+        }
+        if (cur) s.value = cur;
+        paint(s);
+        s.onchange = function () {
+          paint(s);
+          var sg = {};
+          for (var k in state.signoff) sg[k] = state.signoff[k];
+          sg[key] = s.value;
+          state.signoff = sg;
+          save({ signoff: sg }, 'Sign-off saved');
+        };
+      })(sels[i]);
+    }
+  }
+
+  function paintChips() {
+    var chips = document.querySelectorAll('[data-chip]');
+    for (var i = 0; i < chips.length; i++) {
+      var L = labelFor(chips[i].getAttribute('data-chip'));
+      if (L) {
+        chips[i].style.color = L.colour;
+        chips[i].style.borderColor = hexA(L.colour, 0.45);
+      }
+    }
+  }
+
+  function wire() {
+    var here = decodeURIComponent(location.pathname.split('/').pop());
+    var at = ORDER.indexOf(here);
+    var bs = document.querySelectorAll('button');
+    for (var k = 0; k < bs.length; k++) {
+      (function (b) {
+        var t = b.textContent.trim();
+        if (t.indexOf('\u2190') === 0 && at > 0) {
+          b.onclick = function () { location.href = ORDER[at - 1]; };
+        } else if (t.slice(-1) === '\u2192' && at >= 0 && at < ORDER.length - 1) {
+          b.onclick = function () { location.href = ORDER[at + 1]; };
+        } else if (t === 'New test run') {
+          b.onclick = function () { location.href = ORDER[0]; };
+        } else if (t === 'Save') {
+          b.onclick = function () { save({ names: state.names, labels: state.labels }, SAVE_MSG); };
+        } else if (t === 'Reset to default') {
+          b.onclick = function () {
+            state.names = DEFAULT_NAMES;
+            state.labels = DEFAULT_LABELS;
+            save({ names: DEFAULT_NAMES, labels: DEFAULT_LABELS }, 'Reset to defaults');
+            applyNames(); buildSelects(); paintChips(); syncSwatches();
+          };
+        }
+      })(bs[k]);
+    }
+
+    var ins = document.querySelectorAll('[data-nmv]');
+    for (var m = 0; m < ins.length; m++) {
+      (function (inp) {
+        inp.onchange = function () {
+          var which = inp.getAttribute('data-nmv');
+          var names = { local: state.names.local, remote: state.names.remote };
+          names[which] = inp.value.trim() || names[which];
+          state.names = names;
+          applyNames();
+          save({ names: names }, 'Renamed to ' + names[which]);
+        };
+      })(ins[m]);
+    }
+
+    var cols = document.querySelectorAll('input[data-lblcolour]');
+    for (var c = 0; c < cols.length; c++) {
+      (function (inp) {
+        inp.onchange = function () {
+          var code = inp.getAttribute('data-lblcolour');
+          state.labels = state.labels.map(function (L) {
+            if (L.code !== code) return L;
+            return { code: L.code, text: L.text, colour: inp.value, as: L.as, dflt: L.dflt };
+          });
+          paintChips(); buildSelects(); syncSwatches();
+          save({ labels: state.labels }, code + ' colour saved');
+        };
+      })(cols[c]);
+    }
+  }
+
+  function syncSwatches() {
+    var hexes = document.querySelectorAll('[data-lblhex]');
+    for (var i = 0; i < hexes.length; i++) {
+      var L = labelFor(hexes[i].getAttribute('data-lblhex'));
+      if (L) hexes[i].textContent = L.colour;
+    }
+    var ins = document.querySelectorAll('input[data-lblcolour]');
+    for (var j = 0; j < ins.length; j++) {
+      var M = labelFor(ins[j].getAttribute('data-lblcolour'));
+      if (M) ins[j].value = M.colour;
+    }
+  }
+
+  function start() {
+    applyNames();
+    buildSelects();
+    paintChips();
+    syncSwatches();
+    wire();
+    if (window.initDetail) window.initDetail(state);
+  }
+
+  if (window.demo) {
+    window.demo.get().then(function (s) {
+      if (s && s.names) state.names = { local: s.names.local || DEFAULT_NAMES.local, remote: s.names.remote || DEFAULT_NAMES.remote };
+      if (s && s.labels && s.labels.length) state.labels = s.labels;
+      if (s && s.signoff) state.signoff = s.signoff;
+      start();
+    }, start);
+  } else {
+    start();
+  }
+})();
+</script>
+</body></html>

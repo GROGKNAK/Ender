@@ -1,0 +1,16 @@
+node_modules/
+dist/
+tmp/
+*.log
+
+# build output
+site/
+mockup/shots/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# local secrets
+.env
+.env.*.local

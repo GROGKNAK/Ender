@@ -1,0 +1,72 @@
+{
+  "name": "ender",
+  "productName": "Ender",
+  "version": "0.1.0",
+  "description": "Line protection test builder for SEL 87L and 21 elements",
+  "main": "src/main/main.js",
+  "author": {
+    "name": "TX Drone Co",
+    "email": "jake@txdroneco.com"
+  },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
+    "dist": "electron-builder --win",
+    "pack": "electron-builder --win --dir",
+    "smoke": "electron . --smoke",
+    "mockup": "node mockup/build.js",
+    "shots": "electron scripts/shoot.js",
+    "demo": "electron scripts/demo.js",
+    "appshots": "electron . --shots",
+    "icon": "electron scripts/make-icon.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.txdroneco.ender",
+    "productName": "Ender",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "samples/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/*.d.ts",
+      "!**/{test,__tests__,docs,example,examples}/**",
+      "!**/*.bat"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Ender-Setup-${version}.${ext}",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Ender",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "electronDist": "node_modules/electron/dist"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  }
+}

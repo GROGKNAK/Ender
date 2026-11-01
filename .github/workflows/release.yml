@@ -1,0 +1,57 @@
+name: Release
+
+# Tag a commit to cut a release:
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the release and upload the installer
+
+jobs:
+  windows:
+    name: Build Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Build NSIS installer
+        run: npm run dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          # workflow_dispatch has no tag; fall back to the package version.
+          if [ -z "${tag}" ] || [ "${tag}" = "main" ]; then
+            tag="v$(node -p "require('./package.json').version")"
+          fi
+          if ! gh release view "${tag}" >/dev/null 2>&1; then
+            gh release create "${tag}" --title "Ender ${tag}" --generate-notes
+          fi
+          gh release upload "${tag}" dist/*.exe --clobber
+
+      # Kept alongside the release so a build can be grabbed without tagging.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ender-windows-installer
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Relay Settings Report</title></head>
+<body>
+<h1>SEL-311L Settings Report</h1>
+<p>Transcribed from the SEL-311L-1, -7 Instruction Manual (date code 20111031),
+"Settings Example: 230kV Transmission Line Single-Pole Tripping". The settings
+values are SEL's published example; the layout of this report is modelled on an
+acSELerator export and has not been verified against a real one.</p>
+<p>FID = SEL-311L-1-R108-V0-Z003003-D20111031</p>
+<p>Terminal = Station R (Remote terminal)</p>
+<p>Line = Station S to Station R, 230 kV, 20 miles</p>
+<p>Source impedance behind this terminal (system data, not a relay setting):
+Z1R = Z0R = 35.00 ohm at 87.0 deg primary (4.20 ohm secondary)</p>
+<table border="1" cellspacing="0" cellpadding="3">
+  <thead>
+    <tr><th>Group</th><th>Setting</th><th>Range</th><th>Default Value</th>
+        <th>Value</th><th>Category</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>RID</td><td>30 characters</td><td></td><td>SEL-311L 87L SPT</td><td>Identifier Labels</td><td>Relay Identifier</td></tr>
+    <tr><td>1</td><td>TID</td><td>30 characters</td><td></td><td>EXAMPLE: BUS R, BREAKER 1</td><td>Identifier Labels</td><td>Terminal Identifier</td></tr>
+    <tr><td>1</td><td>APP</td><td>87L, 87L21, 87L21P, 87LSP, 311L</td><td></td><td>87LSP</td><td>Line Current Differential Configuration</td><td>Application</td></tr>
+    <tr><td>1</td><td>EHST</td><td>SP1, SP2, N</td><td></td><td>SP1</td><td>Line Current Differential Configuration</td><td>High-speed tripping</td></tr>
+    <tr><td>1</td><td>EHSDTT</td><td>Y, N</td><td></td><td>N</td><td>Line Current Differential Configuration</td><td>Enable high-speed direct transfer trip</td></tr>
+    <tr><td>1</td><td>EDD</td><td>Y, N</td><td></td><td>Y</td><td>Line Current Differential Configuration</td><td>Enable delta current detect</td></tr>
+    <tr><td>1</td><td>EOCTL</td><td>Y, N</td><td></td><td>N</td><td>Line Current Differential Configuration</td><td>Enable Open CT Logic</td></tr>
+    <tr><td>1</td><td>CTR_X</td><td>1-6000</td><td></td><td>240</td><td>Line Current Differential Configuration</td><td>CTR at terminal connected to Channel X</td></tr>
+    <tr><td>1</td><td>87LPP</td><td>OFF, 1.00-10.00 A secondary</td><td></td><td>5.60</td><td>Differential Element Settings</td><td>Phase 87L</td></tr>
+    <tr><td>1</td><td>87L2P</td><td>OFF, 0.50-5.00 A secondary</td><td></td><td>OFF</td><td>Differential Element Settings</td><td>3I2 Negative-sequence 87L</td></tr>
+    <tr><td>1</td><td>87LGP</td><td>OFF, 0.50-5.00 A secondary</td><td></td><td>0.50</td><td>Differential Element Settings</td><td>Ground 87L</td></tr>
+    <tr><td>1</td><td>CTALRM</td><td>0.50-10.00 A secondary</td><td></td><td>5.10</td><td>Differential Element Settings</td><td>Phase difference current alarm pickup</td></tr>
+    <tr><td>1</td><td>87LR</td><td>2.0-8.0</td><td></td><td>6.0</td><td>Restraint Region Characteristic</td><td>Outer Radius</td></tr>
+    <tr><td>1</td><td>87LANG</td><td>90-270 degrees</td><td></td><td>195</td><td>Restraint Region Characteristic</td><td>Angle</td></tr>
+    <tr><td>1</td><td>CTR</td><td>1-6000</td><td></td><td>240</td><td>Transformer Ratios</td><td>Current Transformer Ratio</td></tr>
+    <tr><td>1</td><td>CTRP</td><td>1-6000</td><td></td><td>200</td><td>Transformer Ratios</td><td>Polarizing (IPOL) Current Transformer Ratio</td></tr>
+    <tr><td>1</td><td>PTR</td><td>1.00-10000.00</td><td></td><td>2000</td><td>Transformer Ratios</td><td>Phase (VA, VB, VC) Potential Transformer Ratio</td></tr>
+    <tr><td>1</td><td>PTRS</td><td>1.00-10000.00</td><td></td><td>2000</td><td>Transformer Ratios</td><td>Synchronism Voltage (VS) Potential Transformer Ratio</td></tr>
+    <tr><td>1</td><td>Z1MAG</td><td>0.05-255.00 secondary</td><td></td><td>1.42</td><td>Line Parameters</td><td>Positive-sequence line impedance magnitude</td></tr>
+    <tr><td>1</td><td>Z1ANG</td><td>5.00-90.00 degrees</td><td></td><td>84.70</td><td>Line Parameters</td><td>Positive-sequence line impedance angle</td></tr>
+    <tr><td>1</td><td>Z0MAG</td><td>0.05-255.00 secondary</td><td></td><td>4.64</td><td>Line Parameters</td><td>Zero-sequence line impedance magnitude</td></tr>
+    <tr><td>1</td><td>Z0ANG</td><td>5.00-90.00 degrees</td><td></td><td>73.00</td><td>Line Parameters</td><td>Zero-sequence line impedance angle</td></tr>
+    <tr><td>1</td><td>LL</td><td>0.10-999.00, unitless</td><td></td><td>20.00</td><td>Line Parameters</td><td>Line length</td></tr>
+    <tr><td>1</td><td>E21P</td><td>N, 1-4, 1C-4C</td><td></td><td>2</td><td>Element Enables</td><td>Mho phase distance element zones</td></tr>
+    <tr><td>1</td><td>E21MG</td><td>N, 1-4</td><td></td><td>2</td><td>Element Enables</td><td>Mho ground distance element zones</td></tr>
+    <tr><td>1</td><td>E21XG</td><td>N, 1-4</td><td></td><td>N</td><td>Element Enables</td><td>Quadrilateral ground distance element zones</td></tr>
+    <tr><td>1</td><td>E50P</td><td>N, 1-3</td><td></td><td>N</td><td>Element Enables</td><td>Phase instantaneous element levels</td></tr>
+    <tr><td>1</td><td>E50G</td><td>N, 1-4</td><td></td><td>N</td><td>Element Enables</td><td>Residual ground instantaneous element levels</td></tr>
+    <tr><td>1</td><td>E50Q</td><td>N, 1-4</td><td></td><td>N</td><td>Element Enables</td><td>Negative-sequence instantaneous element levels</td></tr>
+    <tr><td>1</td><td>E51P</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Phase time-overcurrent element</td></tr>
+    <tr><td>1</td><td>E51G</td><td>Y, N</td><td></td><td>Y</td><td>Element Enables</td><td>Residual ground time-overcurrent element</td></tr>
+    <tr><td>1</td><td>E51Q</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Negative-sequence time-overcurrent element</td></tr>
+    <tr><td>1</td><td>E32</td><td>Y, AUTO</td><td></td><td>AUTO</td><td>Element Enables</td><td>Directional control</td></tr>
+    <tr><td>1</td><td>EOOS</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Out-of-Step</td></tr>
+    <tr><td>1</td><td>ELOAD</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Load encroachment</td></tr>
+    <tr><td>1</td><td>ESOTF</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Switch-onto-fault</td></tr>
+    <tr><td>1</td><td>EVOLT</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Voltage elements</td></tr>
+    <tr><td>1</td><td>E25</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Synchronism check</td></tr>
+    <tr><td>1</td><td>E81</td><td>N, 1-6</td><td></td><td>N</td><td>Element Enables</td><td>Frequency elements</td></tr>
+    <tr><td>1</td><td>EFLOC</td><td>Y, N</td><td></td><td>Y</td><td>Element Enables</td><td>Fault location</td></tr>
+    <tr><td>1</td><td>ELOP</td><td>Y, Y1, N</td><td></td><td>Y1</td><td>Element Enables</td><td>Loss-of-potential</td></tr>
+    <tr><td>1</td><td>EBBPT</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Enable busbar PT LOP logic</td></tr>
+    <tr><td>1</td><td>ECOMM</td><td>N, DCB, POTT, DCUB1, DCUB2</td><td></td><td>N</td><td>Element Enables</td><td>Communications-assisted trip scheme</td></tr>
+    <tr><td>1</td><td>E79</td><td>N, 1-4</td><td></td><td>1</td><td>Element Enables</td><td>Reclosures</td></tr>
+    <tr><td>1</td><td>EZ1EXT</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Zone 1 extension</td></tr>
+    <tr><td>1</td><td>ECCVT</td><td>Y, N</td><td></td><td>Y</td><td>Element Enables</td><td>CCVT transient detection</td></tr>
+    <tr><td>1</td><td>ESV</td><td>N, 1-16</td><td></td><td>N</td><td>Element Enables</td><td>SELOGIC control equation Variable Timers</td></tr>
+    <tr><td>1</td><td>ELAT</td><td>N, 1-16</td><td></td><td>N</td><td>Element Enables</td><td>SELOGIC LATCH Bits</td></tr>
+    <tr><td>1</td><td>EDP</td><td>N, 1-16</td><td></td><td>2</td><td>Element Enables</td><td>SELOGIC Display Points</td></tr>
+    <tr><td>1</td><td>EDEM</td><td>THM, ROL</td><td></td><td>THM</td><td>Element Enables</td><td>Demand Metering</td></tr>
+    <tr><td>1</td><td>EADVS</td><td>Y, N</td><td></td><td>N</td><td>Element Enables</td><td>Advanced settings</td></tr>
+    <tr><td>1</td><td>Z1P</td><td>OFF, 0.05-64.00 secondary</td><td></td><td>1.13</td><td>Mho Phase Distance Elements</td><td>Zone 1 reach</td></tr>
+    <tr><td>1</td><td>Z2P</td><td>OFF, 0.05-64.00 secondary</td><td></td><td>1.70</td><td>Mho Phase Distance Elements</td><td>Zone 2 reach</td></tr>
+    <tr><td>1</td><td>50PP1</td><td>0.5-170.00 A secondary</td><td></td><td>0.5</td><td>Mho Phase Distance Elements</td><td>Zone 1 phase-to-phase current fault detector</td></tr>
+    <tr><td>1</td><td>Z1MG</td><td>OFF, 0.05-64.00 secondary</td><td></td><td>1.13</td><td>Mho Ground Distance Elements</td><td>Zone 1 reach</td></tr>
+    <tr><td>1</td><td>Z2MG</td><td>OFF, 0.05-64.00 secondary</td><td></td><td>1.70</td><td>Mho Ground Distance Elements</td><td>Zone 2 reach</td></tr>
+    <tr><td>1</td><td>50GZ1</td><td>0.5-170.00 A secondary</td><td></td><td>0.5</td><td>Mho Ground Distance Elements</td><td>Zone 1 residual ground current fault detector</td></tr>
+    <tr><td>1</td><td>50L1</td><td>0.5-170.00 A secondary</td><td></td><td>0.5</td><td>Mho Ground Distance Elements</td><td>Zone 1 phase current fault detector</td></tr>
+    <tr><td>1</td><td>Z1D</td><td>OFF, 0.00-16000.00 cycles</td><td></td><td>OFF</td><td>Zone Time Delays</td><td>Zone 1 time delay</td></tr>
+    <tr><td>1</td><td>Z2D</td><td>OFF, 0.00-16000.00 cycles</td><td></td><td>20.00</td><td>Zone Time Delays</td><td>Zone 2 time delay</td></tr>
+    <tr><td>1</td><td>51GP</td><td>0.50-16.00 A secondary</td><td></td><td>0.5</td><td>Residual Ground Time-Overcurrent</td><td>Pickup</td></tr>
+    <tr><td>1</td><td>51GC</td><td>U1-U5, C1-C5</td><td></td><td>U3</td><td>Residual Ground Time-Overcurrent</td><td>Curve</td></tr>
+    <tr><td>1</td><td>51GTD</td><td>0.50-15.00</td><td></td><td>2.0</td><td>Residual Ground Time-Overcurrent</td><td>Time dial</td></tr>
+    <tr><td>1</td><td>51GRS</td><td>Y, N</td><td></td><td>Y</td><td>Residual Ground Time-Overcurrent</td><td>Electromechanical reset</td></tr>
+  </tbody>
+</table>
+</body>
+</html>
