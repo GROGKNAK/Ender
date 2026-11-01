@@ -19,6 +19,7 @@ const { buildRelay, validateRelay, compareEnds } = require('../core/relay');
 const { buildLine, DEFAULT_OPERATOR, FAULT_MODELS } = require('../core/line');
 const { buildPlan, lockKeyOf, applyOmissions } = require('../core/testplan');
 const { buildRecord } = require('../core/record');
+const { createSession, slug } = require('../core/session');
 const { testPlanCsv } = require('../core/csv');
 const { testReportPdf, recordPdf } = require('../core/pdf');
 const { Store, sha256 } = require('./store');
@@ -33,31 +34,29 @@ let mainWindow = null;
 let store = null;
 
 /*
- * The working session. Held here rather than in the renderer so that a
- * navigation, a reload, or a crashed view cannot lose a half-entered run.
+ * The working session, and everything that turns it into a plan, a record
+ * and an export bundle. That logic is shared with the web build -- see
+ * core/session.js -- so the two produce the same report from the same two
+ * files. What stays here is the platform: the file system, the dialogs and
+ * the store.
  */
-const session = {
-  local: null,
-  remote: null,
-  names: { local: '', remote: '' },
-  operator: Object.assign({}, DEFAULT_OPERATOR),
-  signoff: {},
-  /*
-   * Locked test points, by lock key. A lock holds the frozen row and the
-   * settings it was computed under, so experimenting elsewhere cannot move a
-   * test line that has already been agreed.
-   */
-  locks: {},
-  /* Test points marked omit-from-report, by lock key. They stay in the app
-   * and are dropped only when exporting. */
-  omit: {},
-  /* What this report is called. Null means follow the two station names;
-   * once set by hand it stays put even if the stations are renamed. */
-  reportTitle: null,
-  plan: null,
-  record: null,
-  reportId: null
-};
+const S = createSession({
+  readSource,
+  hash: sha256,
+  byteLength: (text) => Buffer.byteLength(text),
+  basename: (target) => path.basename(target),
+  appVersion: () => app.getVersion(),
+  store: {
+    getConfig: () => store.getConfig(),
+    getReport: (id) => store.getReport(id)
+  }
+});
+
+const session = S.state;
+const {
+  invalidate, loadEnd, summary, endSummary, experimentalDeviations, reportTitle,
+  requireLine, buildAll, provenance, fingerprint, baseName, exportBundle
+} = S;
 
 /* ------------------------------------------------------------------ window */
 
@@ -162,203 +161,6 @@ function runShots() {
   });
 }
 
-/* -------------------------------------------------------------- session -- */
-
-/*
- * One end's settings, from whatever shape they arrived in: a single export, a
- * zip, or the native folder of per-group files. readSource() flattens all
- * three to a list of texts so everything below this line is the same.
- */
-function loadEnd(end, target) {
-  const source = readSource(target);
-  const parsed = parseMany(source.sources, {});
-  const rawText = source.sources.map((s) => s.text).join('\n');
-  const relay = buildRelay(parsed, { fileName: source.label, rawText });
-  const entry = {
-    end,
-    filePath: target,
-    fileName: source.label,
-    sourceKind: source.kind,
-    fileCount: source.sources.length,
-    files: parsed.files || [],
-    bytes: Buffer.byteLength(rawText),
-    hash: sha256(rawText),
-    relay,
-    problems: validateRelay(relay)
-  };
-  session[end] = entry;
-  const fallback = relay.rid || path.basename(filePath).replace(/\.[^.]+$/, '');
-  if (!session.names[end]) session.names[end] = fallback;
-  invalidate();
-  return summary();
-}
-
-/** Anything derived is discarded whenever an input changes. */
-function invalidate() {
-  session.plan = null;
-  session.record = null;
-}
-
-function endSummary(entry, name) {
-  if (!entry) return null;
-  const r = entry.relay;
-  return {
-    fileName: entry.fileName,
-    filePath: entry.filePath,
-    sourceKind: entry.sourceKind,
-    fileCount: entry.fileCount,
-    files: entry.files,
-    layout: r.layout,
-    format: r.kind,
-    group: r.group,
-    groups: r.groups,
-    enables: r.enables,
-    bytes: entry.bytes,
-    hash: entry.hash,
-    hashShort: entry.hash.slice(0, 4) + '…' + entry.hash.slice(-4),
-    name,
-    model: r.model,
-    rid: r.rid,
-    ridFrom: r.ridFrom,
-    tid: r.tid,
-    serial: r.serial,
-    ctr: r.ctr ? r.ctr.value : null,
-    ptr: r.ptr ? r.ptr.value : null,
-    settingCount: r.settingCount,
-    usedCount: r.catalogue.filter((c) => c.status === 'used').length,
-    duplicateCount: r.catalogue.filter((c) => c.status === 'duplicate').length,
-    unusedCount: r.catalogue.filter((c) => c.status === 'unused').length,
-    catalogue: r.catalogue.slice(0, 1500),
-    problems: entry.problems,
-    zones: r.zones
-  };
-}
-
-/*
- * Where the current settings depart from the stored defaults.
- *
- * Experimenting is the point, but a report built on an override should say so
- * on its face rather than leaving someone to work out why the numbers moved.
- */
-function experimentalDeviations() {
-  const base = store.getConfig().defaults;
-  const op = session.operator;
-  const out = [];
-  const fields = [
-    ['faultModel', 'Fault model', (v) => FAULT_MODELS[v] || v],
-    ['testCurrent', 'Test current', (v) => v + ' A'],
-    ['vnom', 'Nominal voltage', (v) => v + ' V'],
-    ['infeed', 'Remote infeed', (v) => String(v)],
-    ['inZonePct', 'In-zone point', (v) => v + '%'],
-    ['outZonePct', 'Out-of-zone point', (v) => v + '%'],
-    ['warnVolts', 'Warn above', (v) => v + ' V']
-  ];
-  for (const [key, label, fmt] of fields) {
-    if (base[key] === undefined || op[key] === undefined) continue;
-    if (String(op[key]) !== String(base[key])) {
-      out.push({ label, now: fmt(op[key]), was: fmt(base[key]) });
-    }
-  }
-  if (op.d87Override && Object.keys(op.d87Override).length) {
-    const parts = Object.entries(op.d87Override)
-      .filter(([, v]) => v !== null && v !== undefined)
-      .map(([k, v]) => ({ r: '87LR', ang: '87LANG', pickup: '87LPP' }[k] + ' = ' + v));
-    if (parts.length) out.push({ label: '87L characteristic', now: parts.join(', '), was: 'as set in the relay' });
-  }
-  const dirs = op.zoneDirections || {};
-  const dirKeys = Object.keys(dirs);
-  if (dirKeys.length) {
-    out.push({
-      label: 'Zone direction',
-      now: dirKeys.map((k) => 'Zone ' + k + ' ' + dirs[k]).join(', '),
-      was: 'as set in the relay'
-    });
-  }
-  return out;
-}
-
-function summary() {
-  const both = session.local && session.remote;
-  let line = null;
-  let comparison = [];
-
-  if (both) {
-    comparison = compareEnds(session.local.relay, session.remote.relay);
-    try {
-      const m = buildLine(session.local.relay, session.remote.relay, session.operator);
-      line = {
-        z1: m.z1,
-        z0: m.z0,
-        z1mag: m.z1mag.value,
-        z1ang: m.z1ang.value,
-        z0mag: m.z0mag.value,
-        z0ang: m.z0ang.value,
-        k0: m.k0,
-        k0p1: m.k0p1,
-        k0Source: m.k0Source,
-        zones: m.zones,
-        d87: m.d87,
-        ctr: m.ctr ? m.ctr.value : null,
-        ptr: m.ptr ? m.ptr.value : null,
-        length: m.lengthUnits ? m.lengthUnits.value : null
-      };
-    } catch (err) {
-      line = { error: err.message };
-    }
-  }
-
-  return {
-    local: endSummary(session.local, session.names.local),
-    remote: endSummary(session.remote, session.names.remote),
-    names: session.names,
-    operator: session.operator,
-    signoff: session.signoff,
-    omit: session.omit,
-    omittedCount: Object.keys(session.omit).length,
-    reportTitle: both ? reportTitle() : '',
-    reportTitleCustom: Boolean(session.reportTitle),
-    comparison,
-    line,
-    experimental: both ? experimentalDeviations() : [],
-    faultModels: FAULT_MODELS,
-    ready: Boolean(both && line && !line.error),
-    hasPlan: Boolean(session.plan),
-    reportId: session.reportId
-  };
-}
-
-function requireLine() {
-  if (!session.local || !session.remote) throw new Error('Both settings files must be loaded first');
-  return buildLine(session.local.relay, session.remote.relay, session.operator);
-}
-
-function buildAll() {
-  const line = requireLine();
-  session.plan = buildPlan(line, { locks: session.locks });
-  session.record = buildRecord({
-    line,
-    plan: session.plan,
-    local: session.local.relay,
-    remote: session.remote.relay,
-    meta: { appVersion: app.getVersion() }
-  });
-  return { line, plan: session.plan, record: session.record };
-}
-
-function provenance() {
-  return ['local', 'remote'].filter((e) => session[e]).map((e) => ({
-    end: e === 'local' ? 'Local' : 'Remote',
-    fileName: session[e].fileName,
-    hash: session[e].hash.slice(0, 16),
-    model: session[e].relay.model,
-    serial: session[e].relay.serial
-  }));
-}
-
-function fingerprint() {
-  return sha256(['local', 'remote'].map((e) => (session[e] ? session[e].hash : '')).join('|')).slice(0, 16);
-}
-
 /* ------------------------------------------------------------------- ipc -- */
 
 /* Every handler is wrapped so a thrown error reaches the UI as a message
@@ -418,9 +220,9 @@ handle('files:pickFolder', async (end) => {
 
 handle('files:load', (end, filePath) => loadEnd(end, filePath));
 
-handle('files:loadDemo', () => {
-  loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
-  loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
+handle('files:loadDemo', async () => {
+  await loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
+  await loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
   return summary();
 });
 
@@ -541,65 +343,6 @@ handle('record:build', () => {
   return session.record;
 });
 
-/* ---------------------------------------------------------------- export - */
-
-/*
- * What an export is built from.
- *
- * With a saved id, everything comes from the stored snapshot, so an old report
- * can be downloaded again exactly as it was without needing the original
- * settings files. Otherwise it is the live session with the omitted rows
- * dropped.
- */
-function reportTitle() {
-  if (session.reportTitle) return session.reportTitle;
-  const l = session.names.local || 'Local';
-  const r = session.names.remote || 'Remote';
-  return l + ' – ' + r;
-}
-
-function exportBundle(savedId) {
-  if (savedId) {
-    const saved = store.getReport(savedId);
-    if (!saved) throw new Error('No saved report with id ' + savedId);
-    if (!saved.plan || !saved.line) {
-      throw new Error('Report ' + savedId + ' was saved before exports were self-contained, ' +
-        'so it cannot be regenerated. Re-run it from the settings files.');
-    }
-    return {
-      line: saved.line,
-      plan: saved.plan,
-      record: saved.record,
-      names: saved.names || {},
-      signoff: saved.signoff || {},
-      provenance: saved.provenance || [],
-      title: saved.title || saved.id,
-      base: slug(saved.title || saved.id)
-    };
-  }
-
-  const line = requireLine();
-  if (!session.plan) buildAll();
-  const plan = applyOmissions(session.plan, session.omit);
-  const record = buildRecord({
-    line,
-    plan,
-    local: session.local.relay,
-    remote: session.remote.relay,
-    meta: { appVersion: app.getVersion() }
-  });
-  return {
-    line,
-    plan,
-    record,
-    names: session.names,
-    signoff: session.signoff,
-    provenance: provenance(),
-    title: reportTitle(),
-    base: slug(reportTitle())
-  };
-}
-
 async function askSave(defaultName, extension, label) {
   const res = await dialog.showSaveDialog(mainWindow, {
     title: 'Save ' + label,
@@ -608,14 +351,6 @@ async function askSave(defaultName, extension, label) {
   });
   if (res.canceled || !res.filePath) return null;
   return res.filePath;
-}
-
-function slug(s) {
-  return String(s || 'ender').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'ender';
-}
-
-function baseName() {
-  return slug(session.names.local) + '-' + slug(session.names.remote);
 }
 
 handle('export:csv', async (savedId) => {
@@ -681,7 +416,7 @@ handle('reports:delete', (id) => store.deleteReport(id));
  * the line model, the plan and the record -- so it can be downloaded later
  * without the original settings files, which may have moved or changed.
  */
-handle('reports:save', (extra) => {
+handle('reports:save', async (extra) => {
   const b = exportBundle(null);
   const saved = store.saveReport(Object.assign({
     id: session.reportId,
@@ -699,7 +434,7 @@ handle('reports:save', (extra) => {
     omittedCount: b.plan.omittedCount || 0,
     lockedCount: b.plan.lockedCount || 0,
     model: session.operator.faultModel,
-    fingerprint: fingerprint(),
+    fingerprint: await fingerprint(),
     provenance: b.provenance,
     line: b.line,
     plan: b.plan,
@@ -744,8 +479,8 @@ function runSmoke() {
     const step = (name) => { stage = name; };
     try {
       step('load demo files');
-      loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
-      loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
+      await loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
+      await loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
       const { line, plan, record } = buildAll();
 
       if (!plan.distance.length) return fail('no test points generated');
@@ -1142,7 +877,7 @@ function buildMenu() {
   ]));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   store = new Store(app.getPath('userData'));
   session.operator = Object.assign({}, DEFAULT_OPERATOR, store.getConfig().defaults);
 
@@ -1152,7 +887,7 @@ app.whenReady().then(() => {
     const from = process.env['ENDER_LOAD_' + end.toUpperCase()];
     if (!from) continue;
     try {
-      loadEnd(end, from);
+      await loadEnd(end, from);
     } catch (err) {
       console.error('[load] ' + end + ': ' + err.message);
     }
