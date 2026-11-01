@@ -143,23 +143,26 @@ function readFolder(dir) {
  * @returns {{label: string, kind: string, sources: Array}}
  */
 async function readSource(target) {
-  const stat = fs.statSync(target);
+  const label = path.basename(target);
 
-  if (stat.isDirectory()) {
-    return { label: path.basename(target), kind: 'folder', sources: sortSources(readFolder(target)) };
+  /*
+   * Read first and ask questions after. Checking what the target is and then
+   * opening it leaves a gap in which it could become something else, and the
+   * answer is here for free: a directory refuses to be read as a file, and
+   * says so with a code worth branching on.
+   */
+  let bytes;
+  try {
+    bytes = fs.readFileSync(target);
+  } catch (err) {
+    if (err.code !== 'EISDIR') throw err;
+    return { label, kind: 'folder', sources: sortSources(readFolder(target)) };
   }
+
   if (/\.zip$/i.test(target)) {
-    return {
-      label: path.basename(target),
-      kind: 'zip',
-      sources: sortSources(await readZip(fs.readFileSync(target)))
-    };
+    return { label, kind: 'zip', sources: sortSources(await readZip(bytes)) };
   }
-  return {
-    label: path.basename(target),
-    kind: 'file',
-    sources: [{ name: path.basename(target), text: fs.readFileSync(target, 'utf8') }]
-  };
+  return { label, kind: 'file', sources: [{ name: label, text: bytes.toString('utf8') }] };
 }
 
 module.exports = { readZip, readFolder, readSource, sortSources, TEXTY };

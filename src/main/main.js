@@ -13,13 +13,10 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } = require('el
 const path = require('path');
 const fs = require('fs');
 
-const { parseMany } = require('../core/parseSettings');
 const { readSource } = require('../core/bundle');
-const { buildRelay, validateRelay, compareEnds } = require('../core/relay');
-const { buildLine, DEFAULT_OPERATOR, FAULT_MODELS } = require('../core/line');
-const { buildPlan, lockKeyOf, applyOmissions } = require('../core/testplan');
-const { buildRecord } = require('../core/record');
-const { createSession, slug } = require('../core/session');
+const { DEFAULT_OPERATOR } = require('../core/line');
+const { lockKeyOf } = require('../core/testplan');
+const { createSession } = require('../core/session');
 const { testPlanCsv } = require('../core/csv');
 const { testReportPdf, recordPdf } = require('../core/pdf');
 const { Store, sha256 } = require('./store');
@@ -54,8 +51,8 @@ const S = createSession({
 
 const session = S.state;
 const {
-  invalidate, loadEnd, summary, endSummary, experimentalDeviations, reportTitle,
-  requireLine, buildAll, provenance, fingerprint, baseName, exportBundle
+  invalidate, loadEnd, summary, endSummary, experimentalDeviations,
+  buildAll, provenance, fingerprint, exportBundle
 } = S;
 
 /* ------------------------------------------------------------------ window */

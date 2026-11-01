@@ -11,7 +11,6 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const { createSession, slug } = require('../src/core/session');
-const { applyOmissions } = require('../src/core/testplan');
 
 const SAMPLE = `<table>
   <tr><td>RID</td><td>ALPHA_LN1</td></tr>

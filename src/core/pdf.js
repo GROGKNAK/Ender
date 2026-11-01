@@ -483,7 +483,9 @@ async function testReportPdf(args) {
 /* ------------------------------------------------------ calculation record */
 
 async function recordPdf(args) {
-  const { record, line, names, org, provenance, reportTitle } = args;
+  // The record carries its own worked-through quantities, so the line model
+  // itself is not needed here even though callers pass it.
+  const { record, names, org, provenance, reportTitle } = args;
   const local = (names && names.local) || 'Local';
   const remote = (names && names.remote) || 'Remote';
   const subject = reportTitle || (local + ' - ' + remote);

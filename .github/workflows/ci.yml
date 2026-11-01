@@ -50,3 +50,9 @@ jobs:
 
       - name: Mockups still build
         run: node mockup/build.js
+
+      # The published site is only assembled by the Pages workflow, which runs
+      # on main -- so without this a broken site build is found after merging,
+      # by a deploy that fails. It also exercises the web build end to end.
+      - name: Site still builds
+        run: node scripts/build-site.js

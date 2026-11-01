@@ -86,16 +86,10 @@ console.log('publishing the web build: ' + built.files.length + ' shared modules
 
 const mockRoot = path.join(SITE, 'mockups');
 fs.mkdirSync(mockRoot, { recursive: true });
-const web = true;
 
 const files = fs.readdirSync(MOCKUP)
   .filter((f) => f.toLowerCase().endsWith('.html'))
   .sort();
-
-if (!files.length && !web) {
-  console.error('nothing to publish: no web build and no mockup pages');
-  process.exit(1);
-}
 
 const entries = [];
 for (const file of files) {
@@ -170,6 +164,5 @@ if (fs.existsSync(appIndex)) {
 fs.writeFileSync(path.join(SITE, '.nojekyll'), '');
 
 console.log('base path: ' + BASE_PATH + '  (asset URLs must be relative to this)');
-console.log('site/ built: ' + entries.length + ' mockup pages' +
-  (web ? ' under /mockups/, app at root' : ' at root'));
+console.log('site/ built: the app at the root, ' + entries.length + ' mockup pages under /mockups/');
 for (const e of entries) console.log('  ' + e.file.padEnd(24) + e.title);
