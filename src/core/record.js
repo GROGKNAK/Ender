@@ -383,6 +383,10 @@ function buildRecord(args) {
     tests,
     alpha: alphaSection(line, inputs),
     differential: plan.differential,
+    omittedCount: plan.omittedCount || 0,
+    omitted: plan.omitted || [],
+    // Omitted points are simply absent from the record: they are excluded
+    // before it is built and nothing here refers to them.
     assumptions: assumptions(line).concat(lockedTests
       ? ['' + lockedTests + ' of ' + tests.length + ' test points are locked: they were computed ' +
          'earlier and are not affected by the settings in Section A. Each one states the settings ' +

@@ -20,7 +20,9 @@ const { toNumber } = require('./parseSettings');
  */
 const ALIASES = {
   rid: ['RID', 'RELAYID', 'RELAY_ID'],
-  tid: ['TID', 'TERMID', 'TERMINAL_ID'],
+  // The 311L names the location TID; the 421 uses SID for the station. Either
+  // serves as the human label for the end, so fall back to SID.
+  tid: ['TID', 'TERMID', 'TERMINAL_ID', 'SID'],
   fid: ['FID', 'PARTNO', 'PART_NO'],
 
   ctr: ['CTR', 'CTRW', 'CTR1', 'CTRP', 'CTRY'],

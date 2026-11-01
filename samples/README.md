@@ -140,3 +140,107 @@ trip, that both ends still agree on everything an 87L scheme requires to match
 (`Z1MAG`, `Z1ANG`, `Z0MAG`, `Z0ANG`, `LL`, `87LR`, `87LANG`, pickups, ratios and
 zone reaches), and that the two terminal identifiers still differ. It exits
 non-zero if any of that stops being true.
+
+---
+
+# Sample settings — 230 kV line, Station S ↔ Station R (SEL-421)
+
+A second pair, on a different line, for a relay with **no line differential**.
+
+## Where this came from
+
+**SEL-421 Relay Applications Handbook, date code 20130627**, *"230 kV Overhead
+Transmission Line Example"*. The handbook describes "a double-ended 230 kV line
+with SEL-421 protection at each end" and works the settings for the relay at
+**Station S (Harvard)**, protecting the line to **Station R (Princeton)**.
+
+## What is published vs. derived
+
+| | |
+|---|---|
+| **Published by SEL** | Every setting value for Station S, the system data table, and the source impedance behind *both* terminals. |
+| **Derived here** | The **Station R** file: the same settings with `SID` and `RID` changed. |
+
+The handbook gives the sources at both ends as identical — `Z1S = Z1R =
+50 Ω ∠ 86°` primary — on one shared line, so the line constants and the zone
+reaches must match at both terminals. Only the identifiers differ.
+
+## System data (Table 1.1)
+
+| Parameter | Primary | Secondary |
+|---|---|---|
+| Line-to-line voltage | 230 kV | 115 V |
+| Nominal frequency | 60 Hz | |
+| Line length S–R | 50 miles | |
+| Line impedance Z1L | 39 Ω ∠ 84.0° | 1.95 Ω ∠ 84.0° |
+| Line impedance Z0L | 124 Ω ∠ 81.5° | 6.20 Ω ∠ 81.5° |
+| Source S (Z1S = Z0S) | 50 Ω ∠ 86° | 2.50 Ω ∠ 86° |
+| Source R (Z1R = Z0R) | 50 Ω ∠ 86° | 2.50 Ω ∠ 86° |
+| PTR (PTRY) | 230 kV : 115 V | 2000 : 1 |
+| CTR (CTRW) | 500 : 5 | 100 : 1 |
+| Phase rotation | ABC | |
+
+Secondary conversion factor `k = CTR / PTR = 100 / 2000 = 0.05`.
+
+Unlike the 311L pair the sources here are **symmetric**, which makes this the
+quieter of the two fixtures: infeed splits evenly, so a fault calculation error
+shows up as a wrong magnitude rather than a wrong split.
+
+## Cross-checks
+
+- `39 × 0.05 = 1.95` → published `Z1MAG = 1.95` ✓
+- `124 × 0.05 = 6.20` → published `Z0MAG = 6.20` ✓
+- `Z1P = 1.56` is exactly **80%** of `Z1MAG` → the handbook's stated 80% ✓
+- `Z2P = 2.34` is exactly **120%** of `Z1MAG` → the handbook's stated 120% ✓
+- The relay computes its own compensation factor with `k0M1 := AUTO` and prints
+  `0.727 ∠ −3.65°`. Ender's k0 routine returns **0.727 ∠ −3.67°** from the same
+  impedances — agreement to rounding, from a relay's own calculation.
+- `SIR = Z1S / (0.8 · Z1L) = 2.5 / 1.56 = 1.603`, matching the handbook, which
+  is why it sets `ECVT := N`.
+
+## What this pair is for
+
+The 311L pair covers 87L **and** 21. This one covers a relay that has no
+differential at all, which is a different code path:
+
+- `d87` comes back `null` and no alpha-plane settings are found
+- that is a **warning, not an error** — the distance tests are still valid
+- the plan carries 12 distance points and **zero** differential checks
+- the calculation record omits the alpha-plane section rather than printing an
+  empty one
+
+It also pins a naming difference: the 421 identifies its location with `SID`
+(Station Identifier) where the 311L uses `TID`. `relay.js` falls back to `SID`
+so the end still gets a readable name.
+
+## The files
+
+Each end is written three ways, so the same published values go through every
+route settings actually arrive by:
+
+| File | Format | Parsed as |
+|---|---|---|
+| `SEL421_S_HARVARD_230kV.html` | Report export — Group / Setting / Range / Default Value / Value | `html` / `column` |
+| `SEL421_S_HARVARD_230kV_native/` | Native database export — one file per settings group | `folder` / `native` |
+| `SEL421_S_HARVARD_230kV_native.zip` | The same folder, archived | `zip` / `native` |
+| `SEL421_R_PRINCETON_230kV.*` | as above, remote end | |
+
+`test/sel421.test.js` asserts that all three shapes of one end produce an
+identical relay model, and that a pair loaded in *different* shapes — report at
+one end, zip at the other — still cross-checks clean. That combination is the
+realistic one: two crews rarely hand over settings the same way.
+
+## What these files are not
+
+A faithful transcription of SEL's published values, not a capture from a real
+relay. The same caveat as the 311L pair applies to the exact HTML layout.
+
+## Regenerating
+
+```bash
+node samples/build-421-samples.js
+```
+
+Rewrites all six artefacts, then parses them back and exits non-zero unless the
+three shapes of each end agree, both ends still pair up, and no 87L settings
+have crept in.

@@ -160,6 +160,38 @@ function buildPlan(line, opts = {}) {
   };
 }
 
+/**
+ * Drop the test points marked "omit from report".
+ *
+ * Applied only when exporting, so the omitted rows stay visible and reversible
+ * in the app. The count travels with the result because a report that quietly
+ * contains fewer tests than were run is a worse document than one that says so.
+ *
+ * @param {object} plan  from buildPlan()
+ * @param {object} omit  lock key -> true
+ */
+function applyOmissions(plan, omit) {
+  const flags = omit || {};
+  const kept = plan.distance.filter((r) => !flags[r.lockKey]);
+  const dropped = plan.distance.filter((r) => flags[r.lockKey]);
+  if (!dropped.length) return Object.assign({}, plan, { omittedCount: 0, omitted: [] });
+
+  return Object.assign({}, plan, {
+    distance: kept,
+    omittedCount: dropped.length,
+    omitted: dropped.map((r) => ({
+      id: r.id, zone: r.zone, type: r.typeLabel, point: r.point
+    })),
+    lockedCount: kept.filter((r) => r.locked).length,
+    counts: Object.assign({}, plan.counts, {
+      distance: kept.length,
+      total: kept.length + plan.differential.length,
+      voltageWarnings: kept.filter((r) => r.voltageWarning).length
+    })
+  });
+}
+
 module.exports = {
-  buildPlan, distanceTests, differentialTests, lockKeyOf, DEFAULT_TYPES, FAULT_TYPES
+  buildPlan, distanceTests, differentialTests, lockKeyOf, applyOmissions,
+  DEFAULT_TYPES, FAULT_TYPES
 };

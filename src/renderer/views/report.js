@@ -50,21 +50,30 @@ window.Views = window.Views || {};
   Views.report = {
     render(st) {
       if (!st.session.ready) return '<div class="err"><b>✕</b><div>Load both settings files first.</div></div>';
-      return '<header class="page"><div><h2>Test report</h2>' +
+      return '<header class="page"><div>' +
+        '<div class="namewrap" style="margin:0 0 2px">' +
+        '<input class="nameedit" id="rtitle" value="' + esc(st.session.reportTitle || '') +
+        '" placeholder="Report name" style="font-size:19px">' +
+        '<span class="pencil">✎</span></div>' +
         '<p id="rsub">Building…</p></div>' +
         '<div class="actions"><button data-go="differential">← Back</button>' +
         '<button data-act="csv">Export CSV</button>' +
         '<button data-act="reportPdf">Export PDF</button>' +
         '<button data-act="save">Save report</button>' +
         '<button class="primary" data-go="findings">Findings →</button></div></header>' +
-        '<div id="warnbox"></div>' +
+        '<div id="warnbox"></div><div id="omitnote"></div>' +
         '<div class="card"><h3>Test matrix</h3>' +
         '<p class="sub">Every fault type at an in-zone and an out-of-zone point, per zone. ' +
         'Select a row to see the injected quantities. The two right-hand columns are sign-off, ' +
         'one per station — edit the choices in System settings.</p>' +
         '<table id="matrix"><tr><td class="spin">Computing…</td></tr></table></div>' +
         '<h3 id="dhead" style="font-size:14px;margin:18px 0 9px"></h3>' +
-        '<div class="grid2" id="dcards"></div>';
+        '<div class="grid2" id="dcards"></div>' +
+        '<div class="card" style="margin-top:14px"><h3>87L alpha plane checks</h3>' +
+        '<p class="sub">Injected current pairs for the differential element, all three phases. ' +
+        'These come from the characteristic on the Differential screen, not from the distance ' +
+        'reaches, so changing a zone reach does not move them.</p>' +
+        '<table id="dmatrix"><tr><td class="spin">Computing…</td></tr></table></div>';
     },
 
     async mount(root, st, app) {
@@ -81,10 +90,12 @@ window.Views = window.Views || {};
       const shortL = (s.names.local || 'Local').split(' ')[0];
       const shortR = (s.names.remote || 'Remote').split(' ')[0];
 
-      root.querySelector('#rsub').textContent =
+      root.querySelector('#rsub').innerHTML =
+        'Exports as <b id="rname">' + esc(s.reportTitle) + '</b> · ' +
         plan.counts.distance + ' distance points · ' + plan.counts.differential +
-        ' differential checks · ' + (s.names.local || 'Local') + ' – ' + (s.names.remote || 'Remote') +
-        (plan.lockedCount ? ' · ' + plan.lockedCount + ' locked' : '');
+        ' differential checks' +
+        (plan.lockedCount ? ' · ' + plan.lockedCount + ' locked' : '') +
+        (s.omittedCount ? ' · ' + s.omittedCount + ' omitted' : '');
 
       if (plan.lockedCount) {
         const bar = root.querySelector('.actions');
@@ -94,8 +105,26 @@ window.Views = window.Views || {};
         bar.insertBefore(b, bar.firstChild.nextSibling);
       }
 
+      if (s.omittedCount) {
+        root.querySelector('#omitnote').innerHTML =
+          '<div class="warn"><b>⊘</b><div><b>' + s.omittedCount + ' test point' +
+          (s.omittedCount > 1 ? 's are' : ' is') + ' omitted from the exported report.</b> ' +
+          'They stay here so you can put them back. The PDF, the CSV and the calculation record ' +
+          'each state how many were left out.</div></div>';
+      }
+
+      const dev = s.experimental || [];
+      if (dev.length) {
+        root.querySelector('#warnbox').innerHTML =
+          '<div class="warn"><b>⚙</b><div><b>This report was built on experimental settings.</b> ' +
+          dev.map((d) => esc(d.label) + ': <b>' + esc(d.now) + '</b> (default ' + esc(d.was) + ')').join(' · ') +
+          '<div style="margin-top:6px;color:var(--muted)">Use <b>Clear experimental</b> on any workflow ' +
+          'screen to return to the stored defaults. Locked rows keep whatever they were locked with ' +
+          'either way, and the calculation record states it per test point.</div></div></div>';
+      }
+
       if (plan.counts.voltageWarnings) {
-        root.querySelector('#warnbox').innerHTML = '<div class="warn"><b>⚠</b><div><b>' +
+        root.querySelector('#warnbox').innerHTML += '<div class="warn"><b>⚠</b><div><b>' +
           plan.counts.voltageWarnings + ' test point' + (plan.counts.voltageWarnings > 1 ? 's need' : ' needs') +
           ' more than ' + n(s.operator.warnVolts, 0) + ' V on the faulted phase.</b> ' +
           'The bench model does not bound voltage, so it is asking for more than the system could produce. ' +
@@ -107,6 +136,10 @@ window.Views = window.Views || {};
           'fault model, a reach percentage or the 87L characteristic no longer moves it, so a line ' +
           'that has been agreed stays put while you experiment with the rest. Unlocking asks first.',
           null, false) + '</th>' +
+        '<th>' + tip('⊘', 'Omit from report',
+          'Ticked, this test point is left out of the exported PDF and CSV entirely. It stays here ' +
+          'so you can put it back. The exports and the calculation record state how many were ' +
+          'omitted, because a report holding fewer tests than were run should say so.') + '</th>' +
         '<th>#</th><th>Zone</th>' +
         '<th>' + tip('Dir', 'Zone direction',
           'Forward zones look down the line; a reverse zone looks behind the terminal, so its ' +
@@ -132,10 +165,13 @@ window.Views = window.Views || {};
           'The same record for the far end, kept separate because the two ends are often tested by different crews on different days.', null, true) + '</th></tr>';
 
       const rows = plan.distance.map((r, i) =>
-        '<tr class="pick' + (i === 0 ? ' sel' : '') + (r.locked ? ' locked' : '') + '" data-row="' + i + '">' +
+        '<tr class="pick' + (i === 0 ? ' sel' : '') + (r.locked ? ' locked' : '') +
+        (s.omit && s.omit[r.lockKey] ? ' omitted' : '') + '" data-row="' + i + '">' +
         '<td><span class="lockbtn' + (r.locked ? ' on' : '') + '" data-lock="' + esc(r.lockKey) + '" ' +
         'title="' + (r.locked ? 'Locked — click to unlock' : 'Click to lock this test point') + '">' +
         (r.locked ? '■' : '□') + '</span></td>' +
+        '<td><input type="checkbox" class="omitbox" data-omit="' + esc(r.lockKey) + '"' +
+        (s.omit && s.omit[r.lockKey] ? ' checked' : '') + ' title="Omit this test point from the exported report"></td>' +
         '<td class="num">' + esc(r.id) + '</td><td>' + esc(r.zone) + '</td>' +
         '<td>' + tag(r.reverse ? 'rev' : 'fwd', r.reverse ? 't-ex' : 't-in') +
         (r.unphysical ? ' ' + tag('!', 't-bad') : '') + '</td>' +
@@ -154,6 +190,38 @@ window.Views = window.Views || {};
 
       root.querySelector('#matrix').innerHTML = head + rows;
 
+      const dm = root.querySelector('#dmatrix');
+      if (!plan.differential.length) {
+        dm.innerHTML = '<tr><td class="empty">No 87L settings were found, so there is nothing ' +
+          'to check here. The distance tests above are unaffected.</td></tr>';
+      } else {
+        dm.innerHTML =
+          '<tr><th>#</th><th>Ph</th><th>Check</th><th>I<sub>L</sub></th><th>I<sub>R</sub></th>' +
+          '<th>Ratio</th>' +
+          '<th>' + tip('Magnitude test', 'Radius condition',
+            'The ratio has to sit between 1/87LR and 87LR for the element to restrain.') + '</th>' +
+          '<th>' + tip('Angle test', 'Angular condition',
+            'The ratio’s deviation from 180° has to be within half of 87LANG. Both ' +
+            'conditions must hold to restrain; either one failing makes it operate.', null, true) + '</th>' +
+          '<th>Expected</th></tr>' +
+          plan.differential.map((x) =>
+            '<tr><td class="num">' + esc(x.id) + '</td>' +
+            '<td class="' + ['pa', 'pb', 'pc'][['A', 'B', 'C'].indexOf(x.phase)] +
+              '" style="font-weight:600">' + esc(x.phase) + '</td>' +
+            '<td>' + esc(x.label) + '</td>' +
+            '<td class="num">' + n(x.local.magnitude, 2) + ' ∠' + deg2(x.local.angle) + '</td>' +
+            '<td class="num">' + n(x.remote.magnitude, 2) + ' ∠' + deg2(x.remote.angle) + '</td>' +
+            '<td class="num">' + n(x.ratio.magnitude, 3) + ' ∠' + deg2(x.ratio.angle) + '</td>' +
+            '<td class="num" style="color:var(--' + (x.result.magOk ? 'good' : 'bad') + ')">' +
+              n(x.result.inner, 3) + ' ≤ ' + n(x.result.magnitude, 3) + ' ≤ ' +
+              n(x.result.outer, 2) + (x.result.magOk ? ' ✓' : ' ✗') + '</td>' +
+            '<td class="num" style="color:var(--' + (x.result.angOk ? 'good' : 'bad') + ')">' +
+              n(x.result.deviation, 2) + '° ≤ ' + n(x.result.halfSpan, 2) + '°' +
+              (x.result.angOk ? ' ✓' : ' ✗') + '</td>' +
+            '<td>' + tag(x.result.expect, x.result.expect === 'OPERATE' ? 't-op' : 't-re') + '</td></tr>'
+          ).join('');
+      }
+
       const dhead = root.querySelector('#dhead');
       const dcards = root.querySelector('#dcards');
       function showDetail(i) {
@@ -171,7 +239,7 @@ window.Views = window.Views || {};
 
       on(root, 'tr.pick', 'click', (e, tr) => {
         if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
-        if (e.target.closest('.lockbtn')) return;
+        if (e.target.closest('.lockbtn') || e.target.closest('.omitbox')) return;
         showDetail(Number(tr.dataset.row));
       });
 
@@ -192,6 +260,30 @@ window.Views = window.Views || {};
           toast('Locked — this point no longer follows the other pages');
         }
         app.go('report');
+      }));
+
+      on(root, '#rtitle', 'change', guard(async (e, input) => {
+        const res = await window.ender.session.setReportTitle(input.value);
+        st.session = res;
+        input.value = res.reportTitleCustom ? res.reportTitle : '';
+        root.querySelector('#rname').textContent = res.reportTitle;
+        toast(res.reportTitleCustom
+          ? 'Report named “' + res.reportTitle + '”'
+          : 'Back to the station names');
+      }));
+
+      on(root, '[data-omit]', 'change', guard(async (e, box) => {
+        const res = await window.ender.session.setOmit(box.dataset.omit, box.checked);
+        st.session.omit = res.omit;
+        const tr = box.closest('tr');
+        if (tr) tr.classList.toggle('omitted', box.checked);
+        root.querySelector('#omitnote').innerHTML = res.omittedCount
+          ? '<div class="warn"><b>⊘</b><div><b>' + res.omittedCount + ' test point' +
+            (res.omittedCount > 1 ? 's are' : ' is') + ' omitted from the exported report.</b> ' +
+            'They stay here so you can put them back. The PDF, the CSV and the calculation ' +
+            'record each state how many were left out.</div></div>'
+          : '';
+        toast(box.checked ? 'Omitted from the report' : 'Back in the report');
       }));
 
       on(root, '[data-act="unlockAll"]', 'click', guard(async () => {

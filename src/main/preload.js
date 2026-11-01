@@ -51,7 +51,9 @@ contextBridge.exposeInMainWorld('ender', {
     setOperator: (patch) => call('session:setOperator', patch),
     setD87Override: (patch) => call('session:setD87Override', patch),
     clearExperimental: () => call('session:clearExperimental'),
-    setSignoff: (key, value) => call('session:setSignoff', key, value)
+    setSignoff: (key, value) => call('session:setSignoff', key, value),
+    setOmit: (key, omitted) => call('session:setOmit', key, omitted),
+    setReportTitle: (title) => call('session:setReportTitle', title)
   },
 
   plan: {
@@ -65,10 +67,12 @@ contextBridge.exposeInMainWorld('ender', {
     build: () => call('record:build')
   },
 
+  /* Each export takes an optional saved-report id; without one it uses the
+   * live session. */
   exports: {
-    csv: () => call('export:csv'),
-    reportPdf: () => call('export:reportPdf'),
-    recordPdf: () => call('export:recordPdf')
+    csv: (savedId) => call('export:csv', savedId),
+    reportPdf: (savedId) => call('export:reportPdf', savedId),
+    recordPdf: (savedId) => call('export:recordPdf', savedId)
   },
 
   config: {
@@ -88,6 +92,7 @@ contextBridge.exposeInMainWorld('ender', {
     usage: () => call('reports:usage'),
     get: (id) => call('reports:get', id),
     save: (extra) => call('reports:save', extra),
+    rename: (id, title) => call('reports:rename', id, title),
     remove: (id) => call('reports:delete', id)
   },
 

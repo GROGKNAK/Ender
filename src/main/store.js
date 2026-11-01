@@ -124,9 +124,13 @@ class Store {
 
   saveReport(report) {
     const id = report.id || this.nextReportId();
+    const now = new Date().toISOString();
     const record = Object.assign({}, report, {
       id,
-      savedAt: new Date().toISOString()
+      // Keep when it was first saved, so renaming or re-saving does not
+      // reshuffle the archive or disguise how old a report is.
+      savedAt: report.savedAt || now,
+      updatedAt: now
     });
     this.writeJson(path.join('reports', id + '.json'), record);
     return record;
@@ -146,7 +150,9 @@ class Store {
         const stat = fs.statSync(path.join(this.reportsDir, name));
         out.push({
           id: r.id,
+          title: r.title || ((r.names && (r.names.local + ' – ' + r.names.remote)) || r.id),
           savedAt: r.savedAt,
+          updatedAt: r.updatedAt || r.savedAt,
           names: r.names || {},
           relays: r.relays || {},
           counts: r.counts || {},
@@ -154,6 +160,10 @@ class Store {
           engineer: r.engineer || '',
           status: r.status || 'Generated',
           fingerprint: r.fingerprint || '',
+          omittedCount: r.omittedCount || 0,
+          lockedCount: r.lockedCount || 0,
+          // Older saves hold no snapshot and cannot be regenerated.
+          exportable: Boolean(r.plan && r.line),
           size: stat.size
         });
       } catch (err) {

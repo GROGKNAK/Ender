@@ -453,3 +453,104 @@ test('a setting only present in a disregarded group is flagged', () => {
   assert.strictEqual(entry.value, '9', 'the chosen group wins');
   assert.deepStrictEqual(entry.others, [{ group: '2', value: '5' }]);
 });
+
+/* ------------------------------------------------- omit from report ------ */
+
+const { applyOmissions } = require('../src/core/testplan');
+const { testPlanCsv } = require('../src/core/csv');
+const { testReportPdf, recordPdf } = require('../src/core/pdf');
+
+test('omitted points are dropped and counted', () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const key = full.distance[2].lockKey;
+  const cut = applyOmissions(full, { [key]: true });
+
+  assert.strictEqual(cut.distance.length, full.distance.length - 1);
+  assert.strictEqual(cut.omittedCount, 1);
+  assert.ok(!cut.distance.some((r) => r.lockKey === key));
+  assert.strictEqual(cut.omitted[0].id, full.distance[2].id);
+  assert.strictEqual(cut.counts.distance, full.counts.distance - 1);
+  assert.strictEqual(cut.counts.total, full.counts.total - 1);
+});
+
+test('omitting nothing leaves the plan untouched', () => {
+  const full = buildPlan(demoLine());
+  const same = applyOmissions(full, {});
+  assert.strictEqual(same.distance.length, full.distance.length);
+  assert.strictEqual(same.omittedCount, 0);
+});
+
+test('omitting a flagged point also drops its warning from the counts', () => {
+  // A low threshold so this fixture's short zones trip it; the point is the
+  // counting, not the particular voltage.
+  const line = demoLine({ faultModel: 'constantCurrent', warnVolts: 40 });
+  const full = buildPlan(line);
+  const hot = full.distance.find((r) => r.voltageWarning);
+  assert.ok(hot, 'the threshold is low enough to flag something');
+  assert.ok(full.counts.voltageWarnings > 0);
+  const cut = applyOmissions(full, { [hot.lockKey]: true });
+  assert.strictEqual(cut.counts.voltageWarnings, full.counts.voltageWarnings - 1);
+});
+
+test('the record drops omitted points and says nothing about them', () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const dropped = full.distance[0];
+  const cut = applyOmissions(full, { [dropped.lockKey]: true });
+  const rec = buildRecord({ line, plan: cut, local: null, remote: null });
+
+  assert.strictEqual(rec.tests.length, full.distance.length - 1);
+  assert.ok(!rec.tests.some((t) => t.id === dropped.id), 'the point is gone');
+  // Deliberately silent: the record covers what was tested, not what was dropped.
+  assert.ok(!rec.assumptions.some((a) => /omit/i.test(a)), 'no mention in the exclusions');
+  assert.ok(!JSON.stringify(rec.tests).includes('omit'), 'no mention anywhere in the tests');
+});
+
+test('the csv notes the omission; the pdf deliverable does not', async () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const cut = applyOmissions(full, { [full.distance[0].lockKey]: true });
+
+  // The CSV is the working file: whoever ran the tests should see a point was
+  // dropped. The PDF is the deliverable and carries only what was tested.
+  const body = testPlanCsv({ plan: cut, line, names: {} }).replace(/^﻿/, '');
+  assert.ok(/Omitted from this report/.test(body), 'the csv states the omission');
+  assert.ok(/T01/.test(body.split('Omitted from this report')[1] || ''), 'and names the point');
+  assert.ok(!/^T01,/m.test(body), 'while the row itself is gone from the body');
+  assert.ok(/^T02,/m.test(body), 'the remaining rows are intact');
+
+  const bytes = await testReportPdf({ plan: cut, line, names: {}, org: {} });
+  assert.ok(bytes.length > 2000);
+});
+
+test('a report name reaches the pdf and is sanitised for the fonts', async () => {
+  const line = demoLine();
+  const plan = buildPlan(line);
+  const named = await testReportPdf({
+    plan, line, names: { local: 'A', remote: 'B' }, org: {},
+    reportTitle: 'Line 1 — spring outage Ω'
+  });
+  const plain = await testReportPdf({ plan, line, names: { local: 'A', remote: 'B' }, org: {} });
+  assert.ok(named.length > 2000);
+  assert.notStrictEqual(named.length, plain.length, 'the title changes the document');
+});
+
+test('a report with every point omitted still renders', async () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const all = {};
+  for (const r of full.distance) all[r.lockKey] = true;
+  const cut = applyOmissions(full, all);
+  assert.strictEqual(cut.distance.length, 0);
+  assert.strictEqual(cut.omittedCount, full.distance.length);
+
+  const rec = buildRecord({ line, plan: cut, local: null, remote: null });
+  assert.strictEqual(rec.tests.length, 0);
+  assert.strictEqual(rec.selfCheck.ok, true, 'no tests means no failed residuals');
+
+  const bytes = await testReportPdf({ plan: cut, line, names: {}, org: {} });
+  assert.ok(bytes.length > 1500);
+  const rbytes = await recordPdf({ record: rec, line, names: {}, org: {}, provenance: [] });
+  assert.ok(rbytes.length > 1500);
+});

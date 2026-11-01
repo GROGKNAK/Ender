@@ -217,14 +217,15 @@ async function open(title) {
 const ph = (z, dp = 2) => C.abs(z).toFixed(dp) + ' @ ' + C.arg(z).toFixed(1) + ' deg';
 
 async function testReportPdf(args) {
-  const { plan, line, names, org, signoff } = args;
+  const { plan, line, names, org, signoff, reportTitle } = args;
   const local = (names && names.local) || 'Local';
   const remote = (names && names.remote) || 'Remote';
   const title = ((org && org.titlePrefix) || 'Line Protection Test Record');
-  const d = await open(title);
+  const subject = reportTitle || (local + ' - ' + remote);
+  const d = await open(title + ' - ' + subject);
 
   d.heading(title);
-  d.text(local + ' - ' + remote, { size: 11, font: d.fonts.bold });
+  d.text(subject, { size: 11, font: d.fonts.bold });
   d.text([
     (org && org.utility) || '',
     (org && org.division) || '',
@@ -241,6 +242,8 @@ async function testReportPdf(args) {
     ['In / out of zone', line.operator.inZonePct + '% / ' + line.operator.outZonePct + '%']
   ], [170, 340]);
 
+  // Omitted points are left out silently and by design: the report is the
+  // record of what was tested, not of what was considered and dropped.
   if (plan.lockedCount) {
     d.text('L marks a locked test point: it was computed earlier and is not affected by the ' +
       'settings above. The calculation record states the settings each one was built on.',
@@ -315,20 +318,21 @@ async function testReportPdf(args) {
     );
   }
 
-  d.finish(local + ' - ' + remote);
+  d.finish(subject);
   return d.pdf.save();
 }
 
 /* ------------------------------------------------------ calculation record */
 
 async function recordPdf(args) {
-  const { record, line, names, org, provenance } = args;
+  const { record, line, names, org, provenance, reportTitle } = args;
   const local = (names && names.local) || 'Local';
   const remote = (names && names.remote) || 'Remote';
-  const d = await open('Calculation record');
+  const subject = reportTitle || (local + ' - ' + remote);
+  const d = await open('Calculation record - ' + subject);
 
   d.heading('Findings and calculation record');
-  d.text(local + ' - ' + remote, { size: 11, font: d.fonts.bold });
+  d.text(subject, { size: 11, font: d.fonts.bold });
   d.text('Every result traced from the settings file to the number, so a reviewer can check it ' +
     'without re-deriving it. Values are secondary ohms, volts and amperes unless stated.',
     { size: 8, colour: MUTED });
@@ -414,7 +418,7 @@ async function recordPdf(args) {
     x: MARGIN, y: d.y - 11, size: 7.4, font: d.fonts.body, color: MUTED
   });
 
-  d.finish(local + ' - ' + remote);
+  d.finish(subject);
   return d.pdf.save();
 }
 

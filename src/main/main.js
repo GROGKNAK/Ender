@@ -17,7 +17,7 @@ const { parseMany } = require('../core/parseSettings');
 const { readSource } = require('../core/bundle');
 const { buildRelay, validateRelay, compareEnds } = require('../core/relay');
 const { buildLine, DEFAULT_OPERATOR, FAULT_MODELS } = require('../core/line');
-const { buildPlan, lockKeyOf } = require('../core/testplan');
+const { buildPlan, lockKeyOf, applyOmissions } = require('../core/testplan');
 const { buildRecord } = require('../core/record');
 const { testPlanCsv } = require('../core/csv');
 const { testReportPdf, recordPdf } = require('../core/pdf');
@@ -48,6 +48,12 @@ const session = {
    * test line that has already been agreed.
    */
   locks: {},
+  /* Test points marked omit-from-report, by lock key. They stay in the app
+   * and are dropped only when exporting. */
+  omit: {},
+  /* What this report is called. Null means follow the two station names;
+   * once set by hand it stays put even if the stations are renamed. */
+  reportTitle: null,
   plan: null,
   record: null,
   reportId: null
@@ -228,6 +234,49 @@ function endSummary(entry, name) {
   };
 }
 
+/*
+ * Where the current settings depart from the stored defaults.
+ *
+ * Experimenting is the point, but a report built on an override should say so
+ * on its face rather than leaving someone to work out why the numbers moved.
+ */
+function experimentalDeviations() {
+  const base = store.getConfig().defaults;
+  const op = session.operator;
+  const out = [];
+  const fields = [
+    ['faultModel', 'Fault model', (v) => FAULT_MODELS[v] || v],
+    ['testCurrent', 'Test current', (v) => v + ' A'],
+    ['vnom', 'Nominal voltage', (v) => v + ' V'],
+    ['infeed', 'Remote infeed', (v) => String(v)],
+    ['inZonePct', 'In-zone point', (v) => v + '%'],
+    ['outZonePct', 'Out-of-zone point', (v) => v + '%'],
+    ['warnVolts', 'Warn above', (v) => v + ' V']
+  ];
+  for (const [key, label, fmt] of fields) {
+    if (base[key] === undefined || op[key] === undefined) continue;
+    if (String(op[key]) !== String(base[key])) {
+      out.push({ label, now: fmt(op[key]), was: fmt(base[key]) });
+    }
+  }
+  if (op.d87Override && Object.keys(op.d87Override).length) {
+    const parts = Object.entries(op.d87Override)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => ({ r: '87LR', ang: '87LANG', pickup: '87LPP' }[k] + ' = ' + v));
+    if (parts.length) out.push({ label: '87L characteristic', now: parts.join(', '), was: 'as set in the relay' });
+  }
+  const dirs = op.zoneDirections || {};
+  const dirKeys = Object.keys(dirs);
+  if (dirKeys.length) {
+    out.push({
+      label: 'Zone direction',
+      now: dirKeys.map((k) => 'Zone ' + k + ' ' + dirs[k]).join(', '),
+      was: 'as set in the relay'
+    });
+  }
+  return out;
+}
+
 function summary() {
   const both = session.local && session.remote;
   let line = null;
@@ -264,8 +313,13 @@ function summary() {
     names: session.names,
     operator: session.operator,
     signoff: session.signoff,
+    omit: session.omit,
+    omittedCount: Object.keys(session.omit).length,
+    reportTitle: both ? reportTitle() : '',
+    reportTitleCustom: Boolean(session.reportTitle),
     comparison,
     line,
+    experimental: both ? experimentalDeviations() : [],
     faultModels: FAULT_MODELS,
     ready: Boolean(both && line && !line.error),
     hasPlan: Boolean(session.plan),
@@ -377,6 +431,9 @@ handle('session:clear', () => {
   session.remote = null;
   session.names = { local: '', remote: '' };
   session.signoff = {};
+  session.omit = {};
+  session.locks = {};
+  session.reportTitle = null;
   session.reportId = null;
   invalidate();
   return summary();
@@ -409,6 +466,20 @@ handle('session:setOperator', (patch) => {
 handle('session:setSignoff', (key, value) => {
   session.signoff[key] = value;
   return { signoff: session.signoff };
+});
+
+handle('session:setReportTitle', (title) => {
+  const next = String(title === null || title === undefined ? '' : title).trim();
+  // Clearing it goes back to following the station names.
+  session.reportTitle = next || null;
+  return summary();
+});
+
+handle('session:setOmit', (key, omitted) => {
+  if (omitted) session.omit[key] = true;
+  else delete session.omit[key];
+  const count = Object.keys(session.omit).length;
+  return { omit: session.omit, omittedCount: count };
 });
 
 handle('plan:build', () => {
@@ -471,6 +542,63 @@ handle('record:build', () => {
 
 /* ---------------------------------------------------------------- export - */
 
+/*
+ * What an export is built from.
+ *
+ * With a saved id, everything comes from the stored snapshot, so an old report
+ * can be downloaded again exactly as it was without needing the original
+ * settings files. Otherwise it is the live session with the omitted rows
+ * dropped.
+ */
+function reportTitle() {
+  if (session.reportTitle) return session.reportTitle;
+  const l = session.names.local || 'Local';
+  const r = session.names.remote || 'Remote';
+  return l + ' – ' + r;
+}
+
+function exportBundle(savedId) {
+  if (savedId) {
+    const saved = store.getReport(savedId);
+    if (!saved) throw new Error('No saved report with id ' + savedId);
+    if (!saved.plan || !saved.line) {
+      throw new Error('Report ' + savedId + ' was saved before exports were self-contained, ' +
+        'so it cannot be regenerated. Re-run it from the settings files.');
+    }
+    return {
+      line: saved.line,
+      plan: saved.plan,
+      record: saved.record,
+      names: saved.names || {},
+      signoff: saved.signoff || {},
+      provenance: saved.provenance || [],
+      title: saved.title || saved.id,
+      base: slug(saved.title || saved.id)
+    };
+  }
+
+  const line = requireLine();
+  if (!session.plan) buildAll();
+  const plan = applyOmissions(session.plan, session.omit);
+  const record = buildRecord({
+    line,
+    plan,
+    local: session.local.relay,
+    remote: session.remote.relay,
+    meta: { appVersion: app.getVersion() }
+  });
+  return {
+    line,
+    plan,
+    record,
+    names: session.names,
+    signoff: session.signoff,
+    provenance: provenance(),
+    title: reportTitle(),
+    base: slug(reportTitle())
+  };
+}
+
 async function askSave(defaultName, extension, label) {
   const res = await dialog.showSaveDialog(mainWindow, {
     title: 'Save ' + label,
@@ -489,33 +617,36 @@ function baseName() {
   return slug(session.names.local) + '-' + slug(session.names.remote);
 }
 
-handle('export:csv', async () => {
-  const { line, plan } = session.plan ? { line: requireLine(), plan: session.plan } : buildAll();
-  const target = await askSave(baseName() + '-tests.csv', 'csv', 'test plan CSV');
+handle('export:csv', async (savedId) => {
+  const b = exportBundle(savedId);
+  const target = await askSave(b.base + '-tests.csv', 'csv', 'test plan CSV');
   if (!target) return null;
   fs.writeFileSync(target, testPlanCsv({
-    plan, line, names: session.names, signoff: session.signoff
+    plan: b.plan, line: b.line, names: b.names, signoff: b.signoff
   }), 'utf8');
   return target;
 });
 
-handle('export:reportPdf', async () => {
-  const { line, plan } = session.plan ? { line: requireLine(), plan: session.plan } : buildAll();
-  const target = await askSave(baseName() + '-report.pdf', 'pdf', 'test report');
+handle('export:reportPdf', async (savedId) => {
+  const b = exportBundle(savedId);
+  const target = await askSave(b.base + '-report.pdf', 'pdf', 'test report');
   if (!target) return null;
   const bytes = await testReportPdf({
-    plan, line, names: session.names, org: store.getConfig().org, signoff: session.signoff
+    plan: b.plan, line: b.line, names: b.names, org: store.getConfig().org,
+    signoff: b.signoff, reportTitle: b.title
   });
   fs.writeFileSync(target, Buffer.from(bytes));
   return target;
 });
 
-handle('export:recordPdf', async () => {
-  const { line, record } = session.record ? { line: requireLine(), record: session.record } : buildAll();
-  const target = await askSave(baseName() + '-calculation-record.pdf', 'pdf', 'calculation record');
+handle('export:recordPdf', async (savedId) => {
+  const b = exportBundle(savedId);
+  if (!b.record) throw new Error('That saved report holds no calculation record');
+  const target = await askSave(b.base + '-calculation-record.pdf', 'pdf', 'calculation record');
   if (!target) return null;
   const bytes = await recordPdf({
-    record, line, names: session.names, org: store.getConfig().org, provenance: provenance()
+    record: b.record, line: b.line, names: b.names,
+    org: store.getConfig().org, provenance: b.provenance, reportTitle: b.title
   });
   fs.writeFileSync(target, Buffer.from(bytes));
   return target;
@@ -544,10 +675,16 @@ handle('reports:usage', () => store.usage());
 handle('reports:get', (id) => store.getReport(id));
 handle('reports:delete', (id) => store.deleteReport(id));
 
+/*
+ * A saved report holds everything needed to produce its documents again --
+ * the line model, the plan and the record -- so it can be downloaded later
+ * without the original settings files, which may have moved or changed.
+ */
 handle('reports:save', (extra) => {
-  if (!session.plan) buildAll();
+  const b = exportBundle(null);
   const saved = store.saveReport(Object.assign({
     id: session.reportId,
+    title: b.title,
     names: session.names,
     relays: {
       local: endSummary(session.local, session.names.local),
@@ -555,12 +692,29 @@ handle('reports:save', (extra) => {
     },
     operator: session.operator,
     signoff: session.signoff,
-    counts: session.plan.counts,
+    omit: session.omit,
+    locks: session.locks,
+    counts: b.plan.counts,
+    omittedCount: b.plan.omittedCount || 0,
+    lockedCount: b.plan.lockedCount || 0,
     model: session.operator.faultModel,
     fingerprint: fingerprint(),
-    provenance: provenance()
+    provenance: b.provenance,
+    line: b.line,
+    plan: b.plan,
+    record: b.record
   }, extra || {}));
   session.reportId = saved.id;
+  return saved;
+});
+
+handle('reports:rename', (id, title) => {
+  const saved = store.getReport(id);
+  if (!saved) throw new Error('No saved report with id ' + id);
+  const next = String(title || '').trim();
+  if (!next) throw new Error('A report needs a name');
+  saved.title = next;
+  store.saveReport(saved);
   return saved;
 });
 
@@ -601,6 +755,101 @@ function runSmoke() {
        * moves every other point, and must come back under the new settings
        * once unlocked.
        */
+      /*
+       * A slider cannot land on 87.5, which is the whole reason the typed box
+       * exists. Check the box reaches the session, not just the slider.
+       */
+      step('typed value entry');
+      const typed = await mainWindow.webContents.executeJavaScript(
+        '(async function () {' +
+        // Make sure the renderer has a loaded session before relying on the
+        // workflow nav, rather than assuming an earlier step left it ready.
+        '  var demo = document.querySelector(\'[data-act="demo"]\');' +
+        '  if (demo) demo.click();' +
+        '  var link = null;' +
+        '  var t0 = Date.now();' +
+        '  while (Date.now() - t0 < 8000) {' +
+        '    link = document.querySelector(\'[data-route="distance"]\');' +
+        '    if (link && !link.classList.contains("disabled")) break;' +
+        '    await new Promise(function (r) { setTimeout(r, 120); });' +
+        '  }' +
+        '  if (!link || link.classList.contains("disabled")) return "distance never became reachable";' +
+        '  link.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 800); });' +
+        '  var box = document.querySelector(\'[data-num="inZonePct"] [data-numbox]\');' +
+        '  if (!box) {' +
+        '    var link = document.querySelector(\'[data-route="distance"]\');' +
+        '    return "no box; link=" + (link ? link.className || "(no class)" : "missing") +' +
+        '      "; heading=" + ((document.querySelector("main h2") || {}).textContent || "?") +' +
+        '      "; fields=" + document.querySelectorAll("[data-num]").length;' +
+        '  }' +
+        '  box.value = "87.5";' +
+        '  box.dispatchEvent(new Event("change", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 700); });' +
+        '  var s = await window.ender.session.get();' +
+        '  var range = document.querySelector(\'[data-num="inZonePct"] [data-numrange]\').value;' +
+        '  var result = String(s.operator.inZonePct) + "/" + String(range);' +
+        // Leave the renderer where it was found; later checks start from the
+        // settings screen and a stranded view breaks them.
+        '  var back = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (back) back.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  return result;' +
+        '})()'
+      );
+      if (typed !== '87.5/87.5') {
+        return fail('a typed value did not reach the session and the slider (got ' + typed + ')');
+      }
+      session.operator.inZonePct = 85;
+      invalidate();
+      buildAll();
+      console.log('[smoke] typed 87.5 into the box, slider and session both followed');
+
+      /*
+       * The generated checks are derived from the characteristic, so changing
+       * 87LR has to move them. They were previously drawn once at mount and
+       * went stale the moment anything was adjusted.
+       */
+      step('87L checks follow the characteristic');
+      const followed = await mainWindow.webContents.executeJavaScript(
+        '(async function () {' +
+        '  var link = document.querySelector(\'[data-route="differential"]\');' +
+        '  if (!link || link.classList.contains("disabled")) return "differential not reachable";' +
+        '  link.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 900); });' +
+        '  var rowText = function () {' +
+        '    var rows = document.querySelectorAll("#dchecks tr");' +
+        '    return rows.length > 3 ? rows[3].textContent : "";' +
+        '  };' +
+        '  var before = rowText();' +
+        '  if (!before) return "no checks table";' +
+        '  var box = document.querySelector(\'[data-num="d87r"] [data-numbox]\');' +
+        '  if (!box) return "no 87LR control";' +
+        '  box.value = "4";' +
+        '  box.dispatchEvent(new Event("change", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 1400); });' +
+        '  var after = rowText();' +
+        '  var sess = await window.ender.session.get();' +
+        '  var rangeEl = document.querySelector(\'[data-num="d87r"] [data-numrange]\');' +
+        '  var toastEl = document.querySelector(".toast");' +
+        '  var diag = " override=" + JSON.stringify(sess.operator.d87Override) +' +
+        '    " lineR=" + (sess.line && sess.line.d87 ? sess.line.d87.r : "?") +' +
+        '    " range=" + (rangeEl ? rangeEl.value : "?") +' +
+        '    " toast=" + (toastEl ? toastEl.textContent : "none");' +
+        '  var home = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (home) home.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  return before === after ? "unchanged" + diag : "changed";' +
+        '})()'
+      );
+      if (followed !== 'changed') {
+        return fail('the 87L checks did not follow the characteristic (' + followed + ')');
+      }
+      session.operator.d87Override = null;
+      invalidate();
+      buildAll();
+      console.log('[smoke] 87L checks followed a characteristic change');
+
       step('lock round trip');
       const key = lockKeyOf(plan.distance[0]);
       const lockedPct = plan.distance[0].pctOfReach;
@@ -631,6 +880,85 @@ function runSmoke() {
       buildAll();
       console.log('[smoke] lock held at ' + lockedPct + '% while others moved, released cleanly');
 
+      /*
+       * Omit has to reach the export, and a saved report has to be able to
+       * produce its documents again from the snapshot alone.
+       */
+      step('omit and saved report round trip');
+      const fullCount = session.plan.distance.length;
+      const omitKey = session.plan.distance[0].lockKey;
+      session.omit[omitKey] = true;
+      const cut = exportBundle(null);
+      if (cut.plan.distance.length !== fullCount - 1 || cut.plan.omittedCount !== 1) {
+        return fail('an omitted point still reached the export');
+      }
+      if (cut.record.tests.length !== fullCount - 1) {
+        return fail('the record still holds the omitted point');
+      }
+      /*
+       * Omissions are silent by design. Check the parts that get rendered --
+       * the bookkeeping fields on the record are not printed anywhere.
+       */
+      const rendered = JSON.stringify([
+        cut.record.assumptions, cut.record.tests, cut.record.derived
+      ]);
+      if (/omit/i.test(rendered)) return fail('the record still refers to an omitted point');
+      // The CSV is the working file and does state it, by design.
+      const csvText = testPlanCsv({
+        plan: cut.plan, line: cut.line, names: cut.names, signoff: {}
+      });
+      if (!/Omitted from this report/.test(csvText)) {
+        return fail('the csv no longer states what was omitted');
+      }
+
+      // The report name has to reach the export, not just the screen.
+      session.reportTitle = 'Spring outage — Line 1';
+      const named = exportBundle(null);
+      if (named.title !== 'Spring outage — Line 1') return fail('the report name did not reach the export');
+      if (!/Spring_outage/.test(named.base)) {
+        return fail('the report name did not reach the file name (got ' + named.base + ')');
+      }
+      session.reportTitle = null;
+
+      const savedSmoke = store.saveReport({
+        title: 'smoke round trip',
+        names: session.names,
+        counts: cut.plan.counts,
+        omittedCount: cut.plan.omittedCount,
+        line: cut.line,
+        plan: cut.plan,
+        record: cut.record,
+        provenance: cut.provenance,
+        signoff: {}
+      });
+      // Read it back the way a download from the archive would.
+      const reloaded = exportBundle(savedSmoke.id);
+      if (reloaded.plan.distance.length !== cut.plan.distance.length) {
+        return fail('a saved report did not reload with the same test points');
+      }
+      const savedPdf = await testReportPdf({
+        plan: reloaded.plan, line: reloaded.line, names: reloaded.names, org: {}, signoff: {}
+      });
+      if (savedPdf.length < 2000) return fail('a saved report produced an empty PDF');
+      store.deleteReport(savedSmoke.id);
+      delete session.omit[omitKey];
+      invalidate();
+      buildAll();
+      console.log('[smoke] omit reached the export; saved report re-exported from its snapshot');
+
+      step('experimental deviation reporting');
+      const baseDev = experimentalDeviations().length;
+      const keepCurrent = session.operator.testCurrent;
+      session.operator.testCurrent = keepCurrent + 2.5;
+      const devs = experimentalDeviations();
+      session.operator.testCurrent = keepCurrent;
+      if (!devs.some((d) => /Test current/.test(d.label))) {
+        return fail('a changed setting was not reported as experimental');
+      }
+      if (experimentalDeviations().length !== baseDev) {
+        return fail('experimental deviations did not clear when the setting went back');
+      }
+
       step('render pdfs');
       const a = await testReportPdf({ plan, line, names: session.names, org: {}, signoff: {} });
       const b = await recordPdf({ record, line, names: session.names, org: {}, provenance: provenance() });
@@ -656,7 +984,12 @@ function runSmoke() {
       step('listener duplication check');
       await mainWindow.webContents.executeJavaScript(
         '(async function () {' +
-        '  document.querySelector(\'[data-act="demo"]\').click();' +
+        '  var home = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (home) home.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  var demo = document.querySelector(\'[data-act="demo"]\');' +
+        '  if (!demo) return "settings screen not reachable";' +
+        '  demo.click();' +
         '  await new Promise(function (r) { setTimeout(r, 600); });' +
         '  for (var i = 0; i < 4; i += 1) {' +
         '    document.querySelector(\'[data-route="system"]\').click();' +

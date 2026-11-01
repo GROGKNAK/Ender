@@ -288,15 +288,12 @@ window.Views = window.Views || {};
         '<div class="card"><h3>Fault model</h3>' +
         '<p class="sub">How voltage and current are derived for each test point.</p>' +
         '<div class="ctl"><label>Method</label><div class="seg">' + models + '</div></div>' +
-        '<div class="ctl"><label>Test current</label>' +
-        '<input type="range" data-op="testCurrent" min="5" max="200" value="' + Math.round(op.testCurrent * 10) + '">' +
-        '<span class="val" data-val="testCurrent">' + n(op.testCurrent, 1) + ' A</span></div>' +
-        '<div class="ctl"><label>Nominal voltage</label>' +
-        '<input type="range" data-op="vnom" min="300" max="1200" value="' + Math.round(op.vnom * 10) + '">' +
-        '<span class="val" data-val="vnom">' + n(op.vnom, 1) + ' V</span></div>' +
-        '<div class="ctl"><label>Remote infeed</label>' +
-        '<input type="range" data-op="infeed" min="0" max="200" value="' + Math.round(op.infeed * 100) + '">' +
-        '<span class="val" data-val="infeed">' + n(op.infeed, 2) + '</span></div>' +
+        U.numField({ key: 'testCurrent', label: 'Test current', min: 0.1, max: 20, step: 0.05,
+          value: op.testCurrent, unit: 'A', decimals: 2 }) +
+        U.numField({ key: 'vnom', label: 'Nominal voltage', min: 20, max: 140, step: 0.1,
+          value: op.vnom, unit: 'V', decimals: 2 }) +
+        U.numField({ key: 'infeed', label: 'Remote infeed', min: 0, max: 3, step: 0.01,
+          value: op.infeed, decimals: 2 }) +
         (op.faultModel === 'sourceImpedance'
           ? '<div style="margin-top:12px"><p class="sub" style="margin-bottom:6px">Source impedance ' +
             '(Z1 mag, Z1 ang, Z0 mag, Z0 ang)</p>' +
@@ -321,21 +318,16 @@ window.Views = window.Views || {};
         toast(st.session.faultModels[b.dataset.model] + ' selected');
       }));
 
-      const scale = { testCurrent: 10, vnom: 10, infeed: 100 };
-      root.querySelectorAll('[data-op]').forEach((slider) => {
-        const key = slider.dataset.op;
-        const show = root.querySelector('[data-val="' + key + '"]');
-        slider.addEventListener('input', () => {
-          const v = Number(slider.value) / scale[key];
-          show.textContent = key === 'infeed' ? n(v, 2) : n(v, 1) + (key === 'vnom' ? ' V' : ' A');
+      for (const key of ['testCurrent', 'vnom', 'infeed']) {
+        U.bindNum(root, key, {
+          commit: guard(async (value) => {
+            const patch = {};
+            patch[key] = value;
+            app.setSession(await window.ender.session.setOperator(patch));
+            toast('Saved');
+          })
         });
-        slider.addEventListener('change', guard(async () => {
-          const patch = {};
-          patch[key] = Number(slider.value) / scale[key];
-          app.setSession(await window.ender.session.setOperator(patch));
-          toast('Saved');
-        }));
-      });
+      }
 
       on(root, '[data-src]', 'change', guard(async (e, input) => {
         const [which, field] = input.dataset.src.split('.');
@@ -377,6 +369,10 @@ window.Views = window.Views || {};
     const px = (r) => cx + r * S;
     const py = (x) => cy - x * S;
     const span = half;
+
+    // Trim the canvas to what is actually drawn, so a line with only short
+    // forward zones does not leave half the card empty.
+    svg.setAttribute('height', Math.ceil((top + bottom) * S) + 14);
 
     for (let g = -span; g <= span; g += Math.max(2, Math.round(span / 5))) {
       svg.appendChild(el('line', { x1: px(g), y1: py(top), x2: px(g), y2: py(-bottom), stroke: '#222a35', 'stroke-width': 1 }));
@@ -449,16 +445,20 @@ window.Views = window.Views || {};
         '<span><i style="background:#f85149"></i>Out of zone</span></div></div>' +
         '<div><div class="card"><h3>Test point placement</h3>' +
         '<p class="sub">Defaults follow common practice: 85% in, 110% out.</p>' +
-        '<div class="ctl"><label>' + tip('In zone', 'In-zone test point',
-          'A fault inside the reach, where the element must operate. 85% leaves margin for CT and VT error so a healthy relay still passes.',
-          'Z = reach × 85%') + '</label>' +
-        '<input type="range" data-pct="inZonePct" min="40" max="99" value="' + op.inZonePct + '">' +
-        '<span class="val" data-val="inZonePct">' + op.inZonePct + '%</span></div>' +
-        '<div class="ctl"><label>' + tip('Out of zone', 'Out-of-zone test point',
-          'A fault just past the reach, where the element must stay put. This is the security half of the test — it catches a zone set too long.',
-          'Z = reach × 110%') + '</label>' +
-        '<input type="range" data-pct="outZonePct" min="101" max="180" value="' + op.outZonePct + '">' +
-        '<span class="val" data-val="outZonePct">' + op.outZonePct + '%</span></div></div>' +
+        U.numField({
+          key: 'inZonePct', min: 40, max: 99.5, step: 0.5, value: op.inZonePct,
+          unit: '%', decimals: 1,
+          label: tip('In zone', 'In-zone test point',
+            'A fault inside the reach, where the element must operate. 85% leaves margin for CT and VT error so a healthy relay still passes.',
+            'Z = reach × 85%')
+        }) +
+        U.numField({
+          key: 'outZonePct', min: 100.5, max: 180, step: 0.5, value: op.outZonePct,
+          unit: '%', decimals: 1,
+          label: tip('Out of zone', 'Out-of-zone test point',
+            'A fault just past the reach, where the element must stay put. This is the security half of the test — it catches a zone set too long.',
+            'Z = reach × 110%')
+        }) + '</div>' +
 
         '<div class="card"><h3>Zone direction</h3>' +
         '<p class="sub">Taken from the relay where it says so. A reverse zone looks behind the ' +
@@ -488,37 +488,95 @@ window.Views = window.Views || {};
         '</div>' +
 
         '<div class="card"><h3>Resulting test points</h3>' +
-        '<p class="sub">Three fault types at each point, every zone.</p>' +
-        '<table id="tp"></table></div></div></div>';
+        '<p class="sub" id="tpsub">Every point the report will contain, with the same numbering, ' +
+        'so a row here is the row you will see there.</p>' +
+        '<table id="tp"><tr><td class="spin">Building…</td></tr></table></div></div></div>';
     },
 
     mount(root, st, app) {
       const line = st.session.line;
       const svg = root.querySelector('#rx');
       const table = root.querySelector('#tp');
-      const read = (k) => Number(root.querySelector('[data-pct="' + k + '"]').value);
+      const read = (k) => Number(root.querySelector('[data-num="' + k + '"] [data-numrange]').value);
+
+      /*
+       * The table lists the real test points, with the identifiers the report
+       * uses, because the whole point is being able to match a row here to a
+       * row there while experimenting.
+       *
+       * Locked rows are shown as they are rather than as the sliders would
+       * make them: they will not move, and previewing them as if they would
+       * is exactly the confusion this is meant to remove.
+       */
+      let rows = null;
 
       function redraw() {
         const inP = read('inZonePct');
         const outP = read('outZonePct');
         drawRX(svg, line, inP, outP);
-        let html = '<tr><th>Zone</th><th>Dir</th><th>Point</th><th>% reach</th><th>Z loop</th>' +
-          '<th>% of line</th><th>87L</th><th>21 expected</th></tr>';
-        for (const z of line.zones) {
-          const rev = z.direction === 'reverse';
-          for (const [pct, label, expect] of [[inP, 'In zone', 'OPERATE'], [outP, 'Out of zone', 'RESTRAIN']]) {
-            const zl = z.reach * pct / 100;
-            html += '<tr><td>' + esc(z.name) + '</td>' +
-              '<td>' + tag(rev ? 'rev' : 'fwd', rev ? 't-ex' : 't-in') + '</td>' +
-              '<td>' + label + '</td><td class="num">' + pct + '%</td>' +
-              '<td class="num">' + n(zl, 2) + ' ' + OHM + (rev ? ' ∠+180°' : '') + '</td>' +
-              '<td class="num">' + n((zl / abs(line.z1)) * 100, 0) + '%' + (rev ? ' behind' : '') + '</td>' +
-              '<td>' + tag(rev ? 'external' : 'see report', rev ? 't-ex' : 't-re') + '</td>' +
-              '<td>' + tag(expect, expect === 'OPERATE' ? 't-op' : 't-re') + '</td></tr>';
-          }
+        if (!rows) return;
+
+        const live = [];
+        let moved = 0;
+        for (const r of rows) {
+          if (r.locked) { live.push(r); continue; }
+          const pct = r.pointKey === 'in' ? inP : outP;
+          const mag = r.reach * pct / 100;
+          if (pct !== r.pctOfReach) moved += 1;
+          live.push(Object.assign({}, r, {
+            pctOfReach: pct,
+            zMag: mag,
+            linePct: (mag / abs(line.z1)) * 100
+          }));
+        }
+
+        const lockedCount = rows.filter((r) => r.locked).length;
+        root.querySelector('#tpsub').innerHTML =
+          'Every point the report will contain, with the same numbering, so a row here is the row ' +
+          'you will see there.' +
+          (lockedCount
+            ? ' <b>' + lockedCount + ' locked</b> — shown as they stand, and the sliders do not move them.'
+            : '') +
+          (moved ? ' <span style="color:var(--warn)">' + moved + ' points differ from the last generated report.</span>' : '');
+
+        let html = '<tr><th>#</th><th>Zone</th><th>Dir</th><th>Fault</th><th>Point</th>' +
+          '<th>% reach</th><th>Z loop</th><th>% of line</th><th>87L</th><th>21 expected</th></tr>';
+        for (const r of live) {
+          html += '<tr' + (r.locked ? ' class="locked"' : '') + '>' +
+            '<td class="num">' + esc(r.id) + (r.locked ? ' <span class="lockbtn on" style="width:14px;height:14px;font-size:8px">■</span>' : '') + '</td>' +
+            '<td>' + esc(r.zone) + '</td>' +
+            '<td>' + tag(r.reverse ? 'rev' : 'fwd', r.reverse ? 't-ex' : 't-in') + '</td>' +
+            '<td>' + esc(r.typeLabel) + '</td>' +
+            '<td>' + esc(r.point) + '</td>' +
+            '<td class="num">' + r.pctOfReach + '%</td>' +
+            '<td class="num">' + n(r.zMag, 2) + ' ' + OHM + (r.reverse ? ' ∠+180°' : '') + '</td>' +
+            '<td class="num">' + n(r.linePct, 0) + '%' + (r.reverse ? ' behind' : '') + '</td>' +
+            '<td>' + tag(r.onLine ? 'internal' : 'external', r.onLine ? 't-in' : 't-ex') + '</td>' +
+            '<td>' + tag(r.expect21, r.expect21 === 'OPERATE' ? 't-op' : 't-re') + '</td></tr>';
         }
         table.innerHTML = html;
       }
+
+      window.ender.plan.build().then((plan) => {
+        rows = plan.distance.map((r) => ({
+          id: r.id,
+          zone: r.zone,
+          typeLabel: r.typeLabel,
+          point: r.point,
+          pointKey: r.pointKey,
+          pctOfReach: r.pctOfReach,
+          reach: r.reach,
+          reverse: r.reverse,
+          onLine: r.onLine,
+          expect21: r.expect21,
+          locked: r.locked,
+          zMag: Math.hypot(r.zLoop.re, r.zLoop.im),
+          linePct: r.linePct
+        }));
+        redraw();
+      }).catch((err) => {
+        table.innerHTML = '<tr><td class="err">' + esc(err.message) + '</td></tr>';
+      });
 
       on(root, '[data-dir]', 'click', guard(async (e, b) => {
         const [zoneNo, value] = b.dataset.dir.split(':');
@@ -528,19 +586,17 @@ window.Views = window.Views || {};
         toast('Zone ' + zoneNo + ' set to ' + value);
       }));
 
-      root.querySelectorAll('[data-pct]').forEach((slider) => {
-        const key = slider.dataset.pct;
-        slider.addEventListener('input', () => {
-          root.querySelector('[data-val="' + key + '"]').textContent = slider.value + '%';
-          redraw();
+      for (const key of ['inZonePct', 'outZonePct']) {
+        U.bindNum(root, key, {
+          preview: redraw,
+          commit: guard(async (value) => {
+            const patch = {};
+            patch[key] = value;
+            app.setSession(await window.ender.session.setOperator(patch), true);
+            toast('Saved');
+          })
         });
-        slider.addEventListener('change', guard(async () => {
-          const patch = {};
-          patch[key] = Number(slider.value);
-          app.setSession(await window.ender.session.setOperator(patch), true);
-          toast('Saved');
-        }));
-      });
+      }
 
       redraw();
     }
@@ -622,22 +678,23 @@ window.Views = window.Views || {};
         '<p class="sub">Read from the relay. Change them to explore what a different setting would ' +
         'do — nothing is written back to the relay, and the record states when a test point was ' +
         'built on an override.</p>' +
-        '<div class="ctl"><label>' + tip('87LR', 'Restraint radius',
-          'The outer radius of the restraint region; the inner radius is its reciprocal. Widening it ' +
-          'makes the element more tolerant of current mismatch between the ends.',
-          '1/87LR ≤ |I_R/I_L| ≤ 87LR') + '</label>' +
-        '<input type="range" data-d87="r" min="20" max="100" value="' + Math.round(d.r * 10) + '">' +
-        '<span class="val" data-d87v="r">' + n(d.r, 1) + '</span></div>' +
-        '<div class="ctl"><label>' + tip('87LANG', 'Restraint angle',
-          'The angular extent of the restraint region, centred on 180°. Larger values tolerate ' +
-          'more channel asymmetry; smaller values operate faster for internal faults.',
-          '|∠ − 180°| ≤ 87LANG/2') + '</label>' +
-        '<input type="range" data-d87="ang" min="90" max="220" value="' + Math.round(d.ang) + '">' +
-        '<span class="val" data-d87v="ang">' + n(d.ang, 0) + '°</span></div>' +
+        U.numField({
+          key: 'd87r', min: 1.5, max: 12, step: 0.1, value: d.r, decimals: 2,
+          label: tip('87LR', 'Restraint radius',
+            'The outer radius of the restraint region; the inner radius is its reciprocal. Widening it ' +
+            'makes the element more tolerant of current mismatch between the ends.',
+            '1/87LR ≤ |I_R/I_L| ≤ 87LR')
+        }) +
+        U.numField({
+          key: 'd87ang', min: 90, max: 220, step: 1, value: d.ang, unit: '°', decimals: 0,
+          label: tip('87LANG', 'Restraint angle',
+            'The angular extent of the restraint region, centred on 180°. Larger values tolerate ' +
+            'more channel asymmetry; smaller values operate faster for internal faults.',
+            '|∠ − 180°| ≤ 87LANG/2')
+        }) +
         (d.pickup !== null
-          ? '<div class="ctl"><label>87LPP pickup</label>' +
-            '<input type="range" data-d87="pickup" min="5" max="200" value="' + Math.round(d.pickup * 10) + '">' +
-            '<span class="val" data-d87v="pickup">' + n(d.pickup, 2) + ' A</span></div>'
+          ? U.numField({ key: 'd87pickup', label: '87LPP pickup', min: 0.05, max: 20, step: 0.05,
+            value: d.pickup, unit: 'A', decimals: 2 })
           : '') +
         (d.overridden
           ? '<p class="why">Relay values: 87LR ' + n(d.base.r, 1) + ', 87LANG ' + n(d.base.ang, 0) +
@@ -651,16 +708,16 @@ window.Views = window.Views || {};
 
         '<div class="card"><h3>Live test point</h3>' +
         '<p class="sub">Where an injected current pair would land. The relay settings themselves are read-only here.</p>' +
-        '<div class="ctl"><label>Ratio magnitude</label>' +
-        '<input type="range" id="am" min="5" max="' + Math.round(d.r * 140) + '" value="100">' +
-        '<span class="val" id="amv">1.00</span></div>' +
-        '<div class="ctl"><label>Ratio angle</label>' +
-        '<input type="range" id="aa" min="0" max="359" value="180"><span class="val" id="aav">180°</span></div>' +
+        U.numField({ key: 'ratioMag', label: 'Ratio magnitude', min: 0.05, max: Math.max(12, d.r * 1.5),
+          step: 0.01, value: 1, decimals: 2 }) +
+        U.numField({ key: 'ratioAng', label: 'Ratio angle', min: 0, max: 359.5, step: 0.5,
+          value: 180, unit: '°', decimals: 1 }) +
         '<div style="margin-top:12px;padding:11px 13px;border-radius:7px;background:#151921;border:1px solid var(--line)">' +
         '<span style="color:var(--muted);font-size:12.5px">Element should </span><span id="verdict"></span></div>' +
         '<div id="why" class="why"></div></div>' +
         '<div class="card"><h3>Generated checks</h3>' +
-        '<p class="sub">Built from the relay’s own settings so they still bracket the boundary if a setting changes.</p>' +
+        '<p class="sub">Built from the characteristic above, so they still bracket the boundary ' +
+        'when a setting changes. Phase A shown; the report carries all three phases.</p>' +
         '<table id="dchecks"></table></div></div></div>';
     },
 
@@ -668,20 +725,18 @@ window.Views = window.Views || {};
       const d = st.session.line.d87;
       if (!d) return;
       const svg = root.querySelector('#ap');
-      const mag = root.querySelector('#am');
-      const ang = root.querySelector('#aa');
       const verdict = root.querySelector('#verdict');
       const why = root.querySelector('#why');
 
-      /* The characteristic the plot should show: whatever the sliders say
-       * right now, so dragging previews the change before it is committed. */
-      const scale = { r: 10, ang: 1, pickup: 10 };
+      const valueOf = (key, fallback) => {
+        const el = root.querySelector('[data-num="' + key + '"] [data-numrange]');
+        return el ? Number(el.value) : fallback;
+      };
+
+      /* The characteristic the plot should show: whatever the controls say
+       * right now, so adjusting previews the change before it is committed. */
       function cur() {
-        const read = (key, fallback) => {
-          const el = root.querySelector('[data-d87="' + key + '"]');
-          return el ? Number(el.value) / scale[key] : fallback;
-        };
-        return { r: read('r', d.r), ang: read('ang', d.ang) };
+        return { r: valueOf('d87r', d.r), ang: valueOf('d87ang', d.ang) };
       }
 
       function evaluate(m, a) {
@@ -693,38 +748,41 @@ window.Views = window.Views || {};
       }
 
       function redraw() {
-        const m = Number(mag.value) / 100;
-        const a = Number(ang.value);
+        const m = valueOf('ratioMag', 1);
+        const a = valueOf('ratioAng', 180);
         const c = cur();
-        root.querySelector('#amv').textContent = n(m, 2);
-        root.querySelector('#aav').textContent = a + '°';
         drawAlpha(svg, c.r, c.ang, { magnitude: m, angle: a });
         const r = evaluate(m, a);
-        verdict.outerHTML = '<span id="verdict">' + tag(r.restrain ? 'RESTRAIN' : 'OPERATE', r.restrain ? 't-re' : 't-op') + '</span>';
+        /*
+         * Update the element in place. Assigning outerHTML replaces the node,
+         * leaving this reference pointing at a detached one -- the next call
+         * then throws, which silently killed everything downstream of the
+         * redraw, including committing the change.
+         */
+        verdict.textContent = r.restrain ? 'RESTRAIN' : 'OPERATE';
+        verdict.className = 'tag ' + (r.restrain ? 't-re' : 't-op');
         why.textContent =
           'magnitude ' + n(1 / r.c.r, 3) + ' ≤ ' + n(m, 3) + ' ≤ ' + n(r.c.r, 2) + (r.magOk ? ' ✓' : ' ✗') +
           '   ·   deviation ' + n(r.dev, 2) + '° ≤ ' + n(r.c.ang / 2, 2) + '°' + (r.angOk ? ' ✓' : ' ✗');
       }
 
-      mag.addEventListener('input', redraw);
-      ang.addEventListener('input', redraw);
+      U.bindNum(root, 'ratioMag', { preview: redraw });
+      U.bindNum(root, 'ratioAng', { preview: redraw });
 
-      // Characteristic sliders: preview while dragging, commit on release.
-      root.querySelectorAll('[data-d87]').forEach((slider) => {
-        const key = slider.dataset.d87;
-        slider.addEventListener('input', () => {
-          const v = Number(slider.value) / scale[key];
-          const label = root.querySelector('[data-d87v="' + key + '"]');
-          label.textContent = key === 'ang' ? n(v, 0) + '°' : (key === 'pickup' ? n(v, 2) + ' A' : n(v, 1));
-          redraw();
+      // Characteristic: preview while adjusting, commit on release.
+      for (const [key, field] of [['d87r', 'r'], ['d87ang', 'ang'], ['d87pickup', 'pickup']]) {
+        U.bindNum(root, key, {
+          preview: redraw,
+          commit: guard(async (value) => {
+            const patch = {};
+            patch[field] = value;
+            app.setSession(await window.ender.session.setD87Override(patch), true);
+            // Recompute the checks against the characteristic just set.
+            await refreshChecks();
+            toast('87L characteristic changed — checks updated');
+          })
         });
-        slider.addEventListener('change', guard(async () => {
-          const patch = {};
-          patch[key] = Number(slider.value) / scale[key];
-          app.setSession(await window.ender.session.setD87Override(patch), true);
-          toast('87L override saved — generate to apply it to the test points');
-        }));
-      });
+      }
 
       on(root, '[data-act="resetD87"]', 'click', guard(async () => {
         app.setSession(await window.ender.session.setD87Override(null));
@@ -741,16 +799,32 @@ window.Views = window.Views || {};
 
       redraw();
 
-      window.ender.plan.build().then((plan) => {
+      /*
+       * The generated checks come from the core, so they have to be rebuilt
+       * whenever the characteristic changes. Drawing them once at mount left
+       * the table showing ratios from the old 87LR the moment anything moved.
+       */
+      function drawChecks(plan) {
         const rows = plan.differential.filter((x) => x.phase === 'A').map((x) =>
-          '<tr><td>' + esc(x.label) + '</td>' +
+          '<tr><td class="num">' + esc(x.id) + '</td><td>' + esc(x.label) + '</td>' +
           '<td class="num">' + n(x.local.magnitude, 2) + ' ∠' + deg2(x.local.angle) + '</td>' +
           '<td class="num">' + n(x.remote.magnitude, 2) + ' ∠' + deg2(x.remote.angle) + '</td>' +
           '<td class="num">' + n(x.ratio.magnitude, 3) + ' ∠' + deg2(x.ratio.angle) + '</td>' +
           '<td>' + tag(x.result.expect, x.result.expect === 'OPERATE' ? 't-op' : 't-re') + '</td></tr>').join('');
         root.querySelector('#dchecks').innerHTML =
-          '<tr><th>Check</th><th>I<sub>L</sub></th><th>I<sub>R</sub></th><th>Ratio</th><th>Expected</th></tr>' + rows;
-      }).catch((err) => toast(err.message, true));
+          '<tr><th>#</th><th>Check</th><th>I<sub>L</sub></th><th>I<sub>R</sub></th><th>Ratio</th>' +
+          '<th>Expected</th></tr>' + rows;
+      }
+
+      async function refreshChecks() {
+        try {
+          drawChecks(await window.ender.plan.build());
+        } catch (err) {
+          toast(err.message || String(err), true);
+        }
+      }
+
+      refreshChecks();
     }
   };
 }());

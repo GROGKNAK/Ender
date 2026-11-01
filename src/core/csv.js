@@ -81,6 +81,17 @@ function testPlanCsv(args) {
   }
 
   rows.push('');
+  /*
+   * The CSV states what was omitted; the PDF report and the calculation
+   * record do not. That split is deliberate: this file is the working copy
+   * for the test set and for whoever ran the tests, where knowing a point was
+   * dropped matters. The PDF is the deliverable, and it carries only what was
+   * actually tested.
+   */
+  if (plan.omittedCount) {
+    rows.push(line(['Omitted from this report', plan.omittedCount,
+      (plan.omitted || []).map((o) => o.id + ' ' + o.zone + ' ' + o.type + ' ' + o.point).join('; ')]));
+  }
   rows.push(line(['Fault model', model.operator.faultModel]));
   rows.push(line(['Test current (A sec)', model.operator.testCurrent]));
   rows.push(line(['Nominal voltage (V L-N)', model.operator.vnom]));
