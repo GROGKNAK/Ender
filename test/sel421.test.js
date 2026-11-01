@@ -129,8 +129,8 @@ test('the alpha plane section is absent rather than empty-looking', () => {
 const { readSource } = require('../src/core/bundle');
 const { parseMany } = require('../src/core/parseSettings');
 
-function loadSource(name) {
-  const src = readSource(path.join(SAMPLES, name));
+async function loadSource(name) {
+  const src = await readSource(path.join(SAMPLES, name));
   const parsed = parseMany(src.sources);
   return {
     kind: src.kind,
@@ -148,12 +148,13 @@ const SHAPES = [
   ['native zip', 'SEL421_S_HARVARD_230kV_native.zip', 'zip']
 ];
 
-test('the same relay reads identically from a file, a folder and a zip', () => {
-  const loaded = SHAPES.map(([label, name, kind]) => {
-    const got = loadSource(name);
+test('the same relay reads identically from a file, a folder and a zip', async () => {
+  const loaded = [];
+  for (const [label, name, kind] of SHAPES) {
+    const got = await loadSource(name);
     assert.strictEqual(got.kind, kind, label + ' was read as ' + got.kind);
-    return got.relay;
-  });
+    loaded.push(got.relay);
+  }
 
   const fingerprint = (r) => JSON.stringify({
     model: r.model,
@@ -171,19 +172,19 @@ test('the same relay reads identically from a file, a folder and a zip', () => {
     'the three shapes disagree:\n' + [...distinct].join('\n'));
 });
 
-test('the native shapes carry both settings groups', () => {
+test('the native shapes carry both settings groups', async () => {
   for (const name of ['SEL421_S_HARVARD_230kV_native', 'SEL421_S_HARVARD_230kV_native.zip']) {
-    const r = loadSource(name).relay;
+    const r = (await loadSource(name)).relay;
     assert.ok(r.groups.includes('1'), name + ' group 1');
     assert.ok(r.groups.includes('G'), name + ' global group');
     assert.strictEqual(r.group, '1', 'the protection group is the one read');
   }
 });
 
-test('the ends can be loaded in different shapes and still pair up', () => {
+test('the ends can be loaded in different shapes and still pair up', async () => {
   // A crew may well hand over one end as a report and the other as an archive.
-  const local = loadSource('SEL421_S_HARVARD_230kV.html').relay;
-  const remote = loadSource('SEL421_R_PRINCETON_230kV_native.zip').relay;
+  const local = (await loadSource('SEL421_S_HARVARD_230kV.html')).relay;
+  const remote = (await loadSource('SEL421_R_PRINCETON_230kV_native.zip')).relay;
   const rows = compareEnds(local, remote);
   assert.deepStrictEqual(rows.filter((r) => r.status === 'differ'), []);
   assert.ok(rows.length >= 6);

@@ -290,14 +290,14 @@ function zipOf(entries) {
   return Buffer.concat([...locals, cd, eocd]);
 }
 
-test('a zip of the native export is read', () => {
+test('a zip of the native export is read', async () => {
   const zip = zipOf([
     { name: 'RELAY/set_1.txt', text: SET_1 },
     { name: 'RELAY/set_2.txt', text: SET_2 },
     { name: 'RELAY/Misc/Device.txt', text: 'LINE NO. 1 PROTECTION RELAY' },
     { name: 'RELAY/Misc/thumb.png', text: 'not text' }
   ]);
-  const files = readZip(zip);
+  const files = await readZip(zip);
   assert.ok(files.some((f) => f.name.endsWith('set_1.txt')));
   assert.ok(!files.some((f) => f.name.endsWith('.png')), 'binary entries are skipped');
 
@@ -306,9 +306,9 @@ test('a zip of the native export is read', () => {
   assert.deepStrictEqual(p.groups, ['1', '2']);
 });
 
-test('stored (uncompressed) zip entries are read too', () => {
+test('stored (uncompressed) zip entries are read too', async () => {
   const zip = zipOf([{ name: 'set_1.txt', text: SET_1, deflate: false }]);
-  const files = readZip(zip);
+  const files = await readZip(zip);
   assert.strictEqual(files.length, 1);
   assert.ok(files[0].text.includes('Z1MAG'));
 });
@@ -321,8 +321,8 @@ test('protection groups are read before anything else in the folder', () => {
   assert.deepStrictEqual(sorted, ['set_1.txt', 'set_2.txt', 'set_L1.txt', 'Misc/Cfg.txt']);
 });
 
-test('a file that is not a zip is refused clearly', () => {
-  assert.throws(() => readZip(Buffer.from('definitely not a zip')), /not a zip/i);
+test('a file that is not a zip is refused clearly', async () => {
+  await assert.rejects(() => readZip(Buffer.from('definitely not a zip')), /not a zip/i);
 });
 
 /* ---------------------------------------------------------------- locking */

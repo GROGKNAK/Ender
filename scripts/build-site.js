@@ -2,12 +2,14 @@
 /*
  * Assembles the static site published to GitHub Pages.
  *
- * Today that is the UI mockups plus an index, so a design can be reviewed from
- * a link rather than a screenshot. When the web build lands, copy its output
- * into site/ here and the Pages workflow needs no change at all.
+ * The app is published at the root and the design mockups go under
+ * /mockups/, where they stay useful as a record of how the screens were
+ * arrived at without being mistaken for the thing itself.
  *
- * Pages are DISCOVERED rather than listed. The mockup set changes often, and a
- * hardcoded list silently drops new screens while reporting success.
+ * Pages serves this project at /Ender/, NOT at the domain root. Anything the
+ * app loads with a leading slash ("/core/plot.js") will 404 in production
+ * while working perfectly in local development, which is a miserable way to
+ * find out. Every path the web build emits is relative for that reason.
  *
  *   node scripts/build-site.js
  */
@@ -20,8 +22,11 @@ const ROOT = path.join(__dirname, '..');
 const MOCKUP = path.join(ROOT, 'mockup');
 const SITE = path.join(ROOT, 'site');
 
-/* Optional one-liners, keyed by filename stem. A page with no entry still
- * publishes; it just gets no description. */
+/* Checked in order; the first that exists is published as the app. */
+
+/* The repository name is the path prefix on a project Pages site. */
+const BASE_PATH = '/' + path.basename(ROOT) + '/';
+
 const BLURBS = {
   '01-settings': 'Drop in the export from each end; cross-check what was parsed.',
   '02-system': 'Derived line constants, k0, and the fault model.',
@@ -37,7 +42,6 @@ const BLURBS = {
 const esc = (s) => String(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/* Prefer the page's own <title>, minus the app-name prefix it carries. */
 function titleOf(html, fallback) {
   const m = html.match(/<title>([\s\S]*?)<\/title>/i);
   if (!m) return fallback;
@@ -45,7 +49,6 @@ function titleOf(html, fallback) {
   return t || fallback;
 }
 
-/* "03-distance" -> "Distance" */
 function fromName(stem) {
   return stem.replace(/^\d+[-_]?/, '').replace(/[-_]+/g, ' ')
     .replace(/^./, (c) => c.toUpperCase());
@@ -59,25 +62,45 @@ function version() {
   }
 }
 
-// Regenerate first, so the published site can never lag the source.
+function copyDir(from, to) {
+  fs.mkdirSync(to, { recursive: true });
+  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+    const src = path.join(from, entry.name);
+    const dst = path.join(to, entry.name);
+    if (entry.isDirectory()) copyDir(src, dst);
+    else fs.copyFileSync(src, dst);
+  }
+}
+
+// Regenerate the mockups so the published site can never lag the source.
 execFileSync(process.execPath, [path.join(MOCKUP, 'build.js')], { stdio: 'inherit' });
 
-fs.rmSync(SITE, { recursive: true, force: true });
-fs.mkdirSync(SITE, { recursive: true });
+/*
+ * The app itself is the site now. build-web clears and fills the directory,
+ * so it runs first and the mockups are laid in afterwards, one level down:
+ * they are a record of how the screens were designed, not the product.
+ */
+const { build: buildWeb } = require('./build-web');
+const built = buildWeb(SITE);
+console.log('publishing the web build: ' + built.files.length + ' shared modules, v' + built.version);
+
+const mockRoot = path.join(SITE, 'mockups');
+fs.mkdirSync(mockRoot, { recursive: true });
+const web = true;
 
 const files = fs.readdirSync(MOCKUP)
   .filter((f) => f.toLowerCase().endsWith('.html'))
   .sort();
 
-if (!files.length) {
-  console.error('no mockup pages found in ' + MOCKUP);
+if (!files.length && !web) {
+  console.error('nothing to publish: no web build and no mockup pages');
   process.exit(1);
 }
 
 const entries = [];
 for (const file of files) {
   const html = fs.readFileSync(path.join(MOCKUP, file), 'utf8');
-  fs.writeFileSync(path.join(SITE, file), html);
+  fs.writeFileSync(path.join(mockRoot, file), html);
   const stem = file.replace(/\.html$/i, '');
   entries.push({ file, title: titleOf(html, fromName(stem)), blurb: BLURBS[stem] || '' });
 }
@@ -87,7 +110,7 @@ const cards = entries.map((e) => `      <a class="card" href="${esc(e.file)}">
         <p>${esc(e.blurb)}</p>
       </a>`).join('\n');
 
-fs.writeFileSync(path.join(SITE, 'index.html'), `<!doctype html>
+const indexHtml = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -129,10 +152,24 @@ ${cards}
   </main>
 </body>
 </html>
-`);
+`;
+
+fs.writeFileSync(path.join(mockRoot, 'index.html'), indexHtml);
+
+/*
+ * Pages has no server-side rewrite, so a deep link to a client-side route
+ * returns its 404 page. Serving the app from 404.html makes the router pick
+ * the URL up instead. Harmless when the app uses hash routing.
+ */
+const appIndex = path.join(SITE, 'index.html');
+if (fs.existsSync(appIndex)) {
+  fs.copyFileSync(appIndex, path.join(SITE, '404.html'));
+}
 
 // Pages runs Jekyll unless told otherwise, which drops underscore-prefixed files.
 fs.writeFileSync(path.join(SITE, '.nojekyll'), '');
 
-console.log('site/ built: index + ' + entries.length + ' pages');
+console.log('base path: ' + BASE_PATH + '  (asset URLs must be relative to this)');
+console.log('site/ built: ' + entries.length + ' mockup pages' +
+  (web ? ' under /mockups/, app at root' : ' at root'));
 for (const e of entries) console.log('  ' + e.file.padEnd(24) + e.title);

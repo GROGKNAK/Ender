@@ -242,8 +242,13 @@ const { parseMany } = require('../src/core/parseSettings');
 const { buildRelay, compareEnds } = require('../src/core/relay');
 
 const problems = [];
-const load = (name) => {
-  const src = readSource(path.join(OUT, name));
+/*
+ * Reading a zip is asynchronous now: the web build inflates with the
+ * browser's DecompressionStream, and one zip reader serving both builds means
+ * the seam is async on this side too.
+ */
+const load = async (name) => {
+  const src = await readSource(path.join(OUT, name));
   return buildRelay(parseMany(src.sources), {
     fileName: src.label, rawText: src.sources.map((x) => x.text).join('\n')
   });
@@ -258,22 +263,27 @@ const KEY = (r) => JSON.stringify({
   zones: r.zones.map((z) => [z.n, z.phase, z.direction])
 });
 
-for (const s of STATIONS) {
-  const shapes = [s.base + '.html', s.base + '_native', s.base + '_native.zip'];
-  const keys = new Set(shapes.map((n) => KEY(load(n))));
-  if (keys.size !== 1) problems.push(s.base + ': the three shapes disagree');
-  const r = load(shapes[0]);
-  if (!r.model) problems.push(s.base + ': no relay model detected');
-  if (r.d87 && r.d87.r) problems.push(s.base + ': an SEL-421 should carry no 87L settings');
-  if (r.zones.length !== 2) problems.push(s.base + ': expected two zones, got ' + r.zones.length);
-}
+(async () => {
+  for (const s of STATIONS) {
+    const shapes = [s.base + '.html', s.base + '_native', s.base + '_native.zip'];
+    const keys = new Set();
+    for (const n of shapes) keys.add(KEY(await load(n)));
+    if (keys.size !== 1) problems.push(s.base + ': the three shapes disagree');
+    const r = await load(shapes[0]);
+    if (!r.model) problems.push(s.base + ': no relay model detected');
+    if (r.d87 && r.d87.r) problems.push(s.base + ': an SEL-421 should carry no 87L settings');
+    if (r.zones.length !== 2) problems.push(s.base + ': expected two zones, got ' + r.zones.length);
+  }
 
-const differ = compareEnds(load(STATIONS[0].base + '.html'),
-  load(STATIONS[1].base + '_native.zip')).filter((x) => x.status === 'differ');
-if (differ.length) problems.push('the ends disagree on: ' + differ.map((d) => d.label).join(', '));
+  const differ = compareEnds(
+    await load(STATIONS[0].base + '.html'),
+    await load(STATIONS[1].base + '_native.zip')
+  ).filter((x) => x.status === 'differ');
+  if (differ.length) problems.push('the ends disagree on: ' + differ.map((d) => d.label).join(', '));
 
-if (problems.length) {
-  console.error('\nFAILED:\n  ' + problems.join('\n  '));
-  process.exit(1);
-}
-console.log('\nverified: three shapes per end agree, both ends pair up, no 87L present');
+  if (problems.length) {
+    console.error('\nFAILED:\n  ' + problems.join('\n  '));
+    process.exit(1);
+  }
+  console.log('\nverified: three shapes per end agree, both ends pair up, no 87L present');
+})();

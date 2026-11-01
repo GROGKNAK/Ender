@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Same policy as the desktop build. The module loader runs functions the
+    build step wrote into modules.js rather than evaluating source at runtime,
+    so this needs no 'unsafe-eval' -- which matters on a page whose whole job
+    is reading files somebody was sent.
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'">
+  <meta name="description" content="Build 87L and 21 relay test points from the settings exports at both ends of a line.">
+  <title>Ender</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Shown only until the app takes over, and replaced in place if it cannot. */
+    #boot { padding: 40px; color: #8b95a5; font: 14px/1.6 system-ui, sans-serif; }
+    .bootfail h1 { color: #f85149; font-size: 16px; margin: 0 0 8px; }
+    .bootfail pre { white-space: pre-wrap; font-size: 12px; color: #6b7280; }
+  </style>
+</head>
+<body data-smoke="boot">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+  <div id="boot">Starting…</div>
+
+  <noscript>
+    <p style="padding:40px;color:#8b95a5;font:14px system-ui">
+      Ender runs entirely in the browser, so it needs JavaScript. Nothing is
+      uploaded either way: the settings files you open are read on this
+      machine and never sent anywhere.
+    </p>
+  </noscript>
+
+  <script src="vendor/pdf-lib.min.js"></script>
+  <script src="manifest.js"></script>
+  <script src="modules.js"></script>
+  <script src="boot.js"></script>
+</body>
+</html>

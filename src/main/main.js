@@ -229,114 +229,32 @@ handle('files:loadDemo', async () => {
 handle('session:get', () => summary());
 
 handle('session:clear', () => {
-  session.local = null;
-  session.remote = null;
-  session.names = { local: '', remote: '' };
-  session.signoff = {};
-  session.omit = {};
-  session.locks = {};
-  session.reportTitle = null;
-  session.reportId = null;
-  invalidate();
+  S.clear();
   return summary();
 });
 
-handle('session:setName', (end, name) => {
-  session.names[end] = String(name || '').trim() || session.names[end];
-  return summary();
-});
+handle('session:setName', (end, name) => S.setName(end, name));
 
-handle('session:swap', () => {
-  const l = session.local;
-  session.local = session.remote;
-  session.remote = l;
-  if (session.local) session.local.end = 'local';
-  if (session.remote) session.remote.end = 'remote';
-  const n = session.names.local;
-  session.names.local = session.names.remote;
-  session.names.remote = n;
-  invalidate();
-  return summary();
-});
+handle('session:swap', () => S.swap());
 
-handle('session:setOperator', (patch) => {
-  session.operator = Object.assign({}, session.operator, patch || {});
-  invalidate();
-  return summary();
-});
+handle('session:setOperator', (patch) => S.setOperator(patch));
 
-handle('session:setSignoff', (key, value) => {
-  session.signoff[key] = value;
-  return { signoff: session.signoff };
-});
+handle('session:setSignoff', (key, value) => S.setSignoff(key, value));
 
-handle('session:setReportTitle', (title) => {
-  const next = String(title === null || title === undefined ? '' : title).trim();
-  // Clearing it goes back to following the station names.
-  session.reportTitle = next || null;
-  return summary();
-});
+handle('session:setReportTitle', (title) => S.setReportTitle(title));
 
-handle('session:setOmit', (key, omitted) => {
-  if (omitted) session.omit[key] = true;
-  else delete session.omit[key];
-  const count = Object.keys(session.omit).length;
-  return { omit: session.omit, omittedCount: count };
-});
+handle('session:setOmit', (key, omitted) => S.setOmit(key, omitted));
 
 handle('plan:build', () => {
   const { plan } = buildAll();
   return plan;
 });
 
-/*
- * Locking freezes a row as it stands. The row is captured from a plan built
- * with the lock absent, so locking never captures an already-frozen copy of
- * itself, and the operator settings travel with it for the record.
- */
-handle('plan:lock', (key) => {
-  const line = requireLine();
-  const live = buildPlan(line, { locks: {} });
-  const row = live.distance.find((r) => r.lockKey === key) ||
-    live.differential.find((d) => d.lockKey === key);
-  if (!row) throw new Error('No such test point: ' + key);
-  session.locks[key] = {
-    row,
-    operator: JSON.parse(JSON.stringify(session.operator)),
-    at: new Date().toISOString()
-  };
-  invalidate();
-  return buildAll().plan;
-});
-
-handle('plan:unlock', (key) => {
-  delete session.locks[key];
-  invalidate();
-  return buildAll().plan;
-});
-
-handle('plan:unlockAll', () => {
-  session.locks = {};
-  invalidate();
-  return buildAll().plan;
-});
-
-/* Experimental settings are everything the operator can change after the
- * files are loaded. Clearing returns to the stored defaults, leaving locked
- * rows alone -- that is the point of locking them. */
-handle('session:clearExperimental', () => {
-  const defaults = store.getConfig().defaults;
-  session.operator = Object.assign({}, DEFAULT_OPERATOR, defaults, { d87Override: null });
-  invalidate();
-  return summary();
-});
-
-handle('session:setD87Override', (patch) => {
-  if (!patch) session.operator.d87Override = null;
-  else session.operator.d87Override = Object.assign({}, session.operator.d87Override, patch);
-  invalidate();
-  return summary();
-});
+handle('plan:lock', (key) => S.lock(key));
+handle('plan:unlock', (key) => S.unlock(key));
+handle('plan:unlockAll', () => S.unlockAll());
+handle('session:clearExperimental', () => S.clearExperimental());
+handle('session:setD87Override', (patch) => S.setD87Override(patch));
 
 handle('record:build', () => {
   if (!session.record) buildAll();

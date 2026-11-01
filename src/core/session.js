@@ -322,6 +322,102 @@ function createSession(platform) {
     };
   }
 
+  /* ---------------------------------------------------- operations --- */
+
+  function setName(end, name) {
+    session.names[end] = String(name || '').trim() || session.names[end];
+    return summary();
+  }
+
+  function swap() {
+    const l = session.local;
+    session.local = session.remote;
+    session.remote = l;
+    if (session.local) session.local.end = 'local';
+    if (session.remote) session.remote.end = 'remote';
+    const n = session.names.local;
+    session.names.local = session.names.remote;
+    session.names.remote = n;
+    invalidate();
+    return summary();
+  }
+
+  function setOperator(patch) {
+    session.operator = Object.assign({}, session.operator, patch || {});
+    invalidate();
+    return summary();
+  }
+
+  function setSignoff(key, value) {
+    session.signoff[key] = value;
+    return { signoff: session.signoff };
+  }
+
+  function setReportTitle(title) {
+    const next = String(title === null || title === undefined ? '' : title).trim();
+    // Clearing it goes back to following the station names.
+    session.reportTitle = next || null;
+    return summary();
+  }
+
+  function setOmit(key, omitted) {
+    if (omitted) session.omit[key] = true;
+    else delete session.omit[key];
+    return { omit: session.omit, omittedCount: Object.keys(session.omit).length };
+  }
+
+  /*
+   * Locking freezes a row as it stands. The row is captured from a plan built
+   * with the lock absent, so locking never captures an already-frozen copy of
+   * itself, and the operator settings travel with it for the record.
+   */
+  function lock(key) {
+    const line = requireLine();
+    const live = buildPlan(line, { locks: {} });
+    const row = live.distance.find((r) => r.lockKey === key) ||
+      live.differential.find((d) => d.lockKey === key);
+    if (!row) throw new Error('No such test point: ' + key);
+    session.locks[key] = {
+      row,
+      operator: JSON.parse(JSON.stringify(session.operator)),
+      at: new Date().toISOString()
+    };
+    invalidate();
+    return buildAll().plan;
+  }
+
+  function unlock(key) {
+    delete session.locks[key];
+    invalidate();
+    return buildAll().plan;
+  }
+
+  function unlockAll() {
+    session.locks = {};
+    invalidate();
+    return buildAll().plan;
+  }
+
+  /*
+   * Experimental settings are everything the operator can change after the
+   * files are loaded. Clearing returns to the stored defaults, leaving locked
+   * rows alone -- that is the point of locking them.
+   */
+  function clearExperimental() {
+    session.operator = Object.assign(
+      {}, DEFAULT_OPERATOR, platform.store.getConfig().defaults, { d87Override: null }
+    );
+    invalidate();
+    return summary();
+  }
+
+  function setD87Override(patch) {
+    if (!patch) session.operator.d87Override = null;
+    else session.operator.d87Override = Object.assign({}, session.operator.d87Override, patch);
+    invalidate();
+    return summary();
+  }
+
   function clear() {
     session.local = null;
     session.remote = null;
@@ -348,7 +444,18 @@ function createSession(platform) {
     fingerprint,
     baseName,
     exportBundle,
-    clear
+    clear,
+    setName,
+    swap,
+    setOperator,
+    setSignoff,
+    setReportTitle,
+    setOmit,
+    lock,
+    unlock,
+    unlockAll,
+    clearExperimental,
+    setD87Override
   };
 }
 
