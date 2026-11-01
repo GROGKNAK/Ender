@@ -459,6 +459,34 @@ window.Views = window.Views || {};
           'Z = reach × 110%') + '</label>' +
         '<input type="range" data-pct="outZonePct" min="101" max="180" value="' + op.outZonePct + '">' +
         '<span class="val" data-val="outZonePct">' + op.outZonePct + '%</span></div></div>' +
+
+        '<div class="card"><h3>Zone direction</h3>' +
+        '<p class="sub">Taken from the relay where it says so. A reverse zone looks behind the ' +
+        'terminal, so its test points go on the other side of the origin and are always external ' +
+        'to the differential. Override any of them if site says otherwise.</p>' +
+        s.line.zones.map((z) => {
+          const seg = (key, label) =>
+            '<span class="' + (z.direction === key ? 'on' : '') + '" data-dir="' + z.n + ':' + key + '">' +
+            label + '</span>';
+          const note = {
+            setting: 'from ' + esc(z.directionFrom || 'the relay') + ' = ' + esc(z.directionRaw || ''),
+            operator: 'set by hand',
+            assumed: 'assumed — no setting found'
+          }[z.directionSource];
+          return '<div class="rowline"><span class="lbl">' + esc(z.name) +
+            ' <span style="color:var(--dim)">' + n(z.reach, 2) + ' ' + OHM + '</span></span>' +
+            '<span style="display:flex;align-items:center;gap:10px">' +
+            '<span style="color:var(--dim);font-size:11px">' + note + '</span>' +
+            '<span class="seg">' + seg('forward', 'Forward') + seg('reverse', 'Reverse') +
+            seg('off', 'Off') + '</span></span></div>';
+        }).join('') +
+        (s.line.zones.some((z) => z.directionSource === 'assumed')
+          ? '<p class="why">Zones with no direction setting are assumed forward. On this relay ' +
+            'family only some zones carry one, so that assumption is stated in the record rather ' +
+            'than hidden.</p>'
+          : '') +
+        '</div>' +
+
         '<div class="card"><h3>Resulting test points</h3>' +
         '<p class="sub">Three fault types at each point, every zone.</p>' +
         '<table id="tp"></table></div></div></div>';
@@ -474,18 +502,31 @@ window.Views = window.Views || {};
         const inP = read('inZonePct');
         const outP = read('outZonePct');
         drawRX(svg, line, inP, outP);
-        let html = '<tr><th>Zone</th><th>Point</th><th>% reach</th><th>Z loop</th><th>% of line</th><th>Expected</th></tr>';
+        let html = '<tr><th>Zone</th><th>Dir</th><th>Point</th><th>% reach</th><th>Z loop</th>' +
+          '<th>% of line</th><th>87L</th><th>21 expected</th></tr>';
         for (const z of line.zones) {
+          const rev = z.direction === 'reverse';
           for (const [pct, label, expect] of [[inP, 'In zone', 'OPERATE'], [outP, 'Out of zone', 'RESTRAIN']]) {
             const zl = z.reach * pct / 100;
-            html += '<tr><td>' + esc(z.name) + '</td><td>' + label + '</td><td class="num">' + pct + '%</td>' +
-              '<td class="num">' + n(zl, 2) + ' ' + OHM + '</td>' +
-              '<td class="num">' + n((zl / abs(line.z1)) * 100, 0) + '%</td>' +
+            html += '<tr><td>' + esc(z.name) + '</td>' +
+              '<td>' + tag(rev ? 'rev' : 'fwd', rev ? 't-ex' : 't-in') + '</td>' +
+              '<td>' + label + '</td><td class="num">' + pct + '%</td>' +
+              '<td class="num">' + n(zl, 2) + ' ' + OHM + (rev ? ' ∠+180°' : '') + '</td>' +
+              '<td class="num">' + n((zl / abs(line.z1)) * 100, 0) + '%' + (rev ? ' behind' : '') + '</td>' +
+              '<td>' + tag(rev ? 'external' : 'see report', rev ? 't-ex' : 't-re') + '</td>' +
               '<td>' + tag(expect, expect === 'OPERATE' ? 't-op' : 't-re') + '</td></tr>';
           }
         }
         table.innerHTML = html;
       }
+
+      on(root, '[data-dir]', 'click', guard(async (e, b) => {
+        const [zoneNo, value] = b.dataset.dir.split(':');
+        const next = Object.assign({}, st.session.operator.zoneDirections || {});
+        next[zoneNo] = value;
+        app.setSession(await window.ender.session.setOperator({ zoneDirections: next }));
+        toast('Zone ' + zoneNo + ' set to ' + value);
+      }));
 
       root.querySelectorAll('[data-pct]').forEach((slider) => {
         const key = slider.dataset.pct;

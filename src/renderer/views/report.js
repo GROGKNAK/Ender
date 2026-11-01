@@ -107,7 +107,12 @@ window.Views = window.Views || {};
           'fault model, a reach percentage or the 87L characteristic no longer moves it, so a line ' +
           'that has been agreed stays put while you experiment with the rest. Unlocking asks first.',
           null, false) + '</th>' +
-        '<th>#</th><th>Zone</th><th>Fault</th><th>Type</th><th>% reach</th>' +
+        '<th>#</th><th>Zone</th>' +
+        '<th>' + tip('Dir', 'Zone direction',
+          'Forward zones look down the line; a reverse zone looks behind the terminal, so its ' +
+          'test points sit on the other side of the origin and are always external to the ' +
+          'differential. Taken from the relay where it says so, and overridable on the Distance page.') + '</th>' +
+        '<th>Fault</th><th>Type</th><th>% reach</th>' +
         '<th>' + tip('Z loop', 'Loop impedance',
           'What the relay measures for this fault. Ground loops include the (1+k0) term, phase loops do not.',
           'Z = reach × % ∠ Z1ANG') + '</th>' +
@@ -131,7 +136,10 @@ window.Views = window.Views || {};
         '<td><span class="lockbtn' + (r.locked ? ' on' : '') + '" data-lock="' + esc(r.lockKey) + '" ' +
         'title="' + (r.locked ? 'Locked — click to unlock' : 'Click to lock this test point') + '">' +
         (r.locked ? '■' : '□') + '</span></td>' +
-        '<td class="num">' + esc(r.id) + '</td><td>' + esc(r.zone) + '</td><td>' + esc(r.typeLabel) + '</td>' +
+        '<td class="num">' + esc(r.id) + '</td><td>' + esc(r.zone) + '</td>' +
+        '<td>' + tag(r.reverse ? 'rev' : 'fwd', r.reverse ? 't-ex' : 't-in') +
+        (r.unphysical ? ' ' + tag('!', 't-bad') : '') + '</td>' +
+        '<td>' + esc(r.typeLabel) + '</td>' +
         '<td style="color:var(--muted)">' + esc(r.kind) + '</td>' +
         '<td class="num">' + r.pctOfReach + '%</td>' +
         '<td class="num">' + n(abs(r.zLoop), 2) + ' ' + OHM + '</td>' +

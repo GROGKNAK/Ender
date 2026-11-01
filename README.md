@@ -1,5 +1,9 @@
 # Ender
 
+[![CI](https://github.com/GROGKNAK/Ender/actions/workflows/ci.yml/badge.svg)](https://github.com/GROGKNAK/Ender/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/GROGKNAK/Ender/actions/workflows/codeql.yml/badge.svg)](https://github.com/GROGKNAK/Ender/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Builds and documents relay test plans for transmission line protection: SEL
 line current differential (87L) and distance (21) elements.
 
