@@ -77,6 +77,91 @@ const U = (function () {
     };
   }
 
+  /*
+   * A value control: slider for coarse movement, typed box for an exact
+   * figure, steppers for nudging. One implementation so every setting in the
+   * app behaves identically -- a slider alone cannot land on 87.5%.
+   *
+   * The range works in real units rather than scaled integers, so the box and
+   * the slider are always the same number and neither can drift.
+   */
+  function numField(o) {
+    const dp = o.decimals !== undefined ? o.decimals
+      : (o.step >= 1 ? 0 : (o.step >= 0.1 ? 1 : 2));
+    const v = Number(o.value);
+    return '<div class="ctl" data-num="' + esc(o.key) + '" data-dp="' + dp + '">' +
+      '<label>' + (o.label || '') + '</label>' +
+      '<input type="range" data-numrange min="' + o.min + '" max="' + o.max +
+        '" step="' + o.step + '" value="' + v + '">' +
+      '<span class="numwrap">' +
+        '<input type="number" class="numbox" data-numbox min="' + o.min + '" max="' + o.max +
+          '" step="' + o.step + '" value="' + v.toFixed(dp) + '">' +
+        '<span class="spin">' +
+          '<button type="button" data-numstep="1" tabindex="-1" aria-label="increase">▲</button>' +
+          '<button type="button" data-numstep="-1" tabindex="-1" aria-label="decrease">▼</button>' +
+        '</span>' +
+      '</span>' +
+      '<span class="numunit">' + esc(o.unit || '') + '</span>' +
+      '</div>';
+  }
+
+  /**
+   * Wire a numField.
+   * @param handlers {preview} fires while dragging or typing, {commit} on release.
+   */
+  function bindNum(root, key, handlers) {
+    const wrap = root.querySelector('[data-num="' + key + '"]');
+    if (!wrap) return null;
+    const range = wrap.querySelector('[data-numrange]');
+    const box = wrap.querySelector('[data-numbox]');
+    const dp = Number(wrap.dataset.dp || 0);
+    const min = Number(range.min);
+    const max = Number(range.max);
+    const step = Number(range.step) || 1;
+
+    const clamp = (x) => Math.min(max, Math.max(min, x));
+    // Snap to the step grid, then trim the floating-point tail that
+    // multiplying a fractional step leaves behind.
+    const snap = (x) => Number(clamp(Math.round((x - min) / step) * step + min).toFixed(6));
+    const read = () => Number(range.value);
+    const show = (x) => { range.value = x; box.value = Number(x).toFixed(dp); };
+    const preview = (x) => { if (handlers.preview) handlers.preview(x); };
+    const commit = (x) => { if (handlers.commit) handlers.commit(x); };
+
+    range.addEventListener('input', () => { box.value = read().toFixed(dp); preview(read()); });
+    range.addEventListener('change', () => commit(read()));
+
+    // While typing, follow along but do not rewrite the box: a half-entered
+    // number like "0." would be clobbered mid-keystroke.
+    box.addEventListener('input', () => {
+      const x = Number(box.value);
+      if (!Number.isFinite(x) || box.value === '') return;
+      range.value = clamp(x);
+      preview(clamp(x));
+    });
+    box.addEventListener('change', () => {
+      const x = Number(box.value);
+      const next = Number.isFinite(x) && box.value !== '' ? snap(x) : read();
+      show(next);
+      preview(next);
+      commit(next);
+    });
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') box.blur();
+    });
+
+    wrap.querySelectorAll('[data-numstep]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const next = snap(read() + Number(b.dataset.numstep) * step);
+        show(next);
+        preview(next);
+        commit(next);
+      });
+    });
+
+    return { get: read, set: show };
+  }
+
   /* Delegated click handling keeps re-rendered views from leaking listeners. */
   function on(root, selector, event, handler) {
     root.addEventListener(event, (e) => {
@@ -89,5 +174,8 @@ const U = (function () {
 
   const when = (iso) => (iso ? String(iso).slice(0, 10) : '—');
 
-  return { esc, n, deg, deg2, abs, arg, polar, OHM, tip, tag, hexA, toast, guard, on, bytes, when };
+  return {
+    esc, n, deg, deg2, abs, arg, polar, OHM, tip, tag, hexA, toast, guard, on, bytes, when,
+    numField, bindNum
+  };
 }());

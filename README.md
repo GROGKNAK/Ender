@@ -116,14 +116,43 @@ src/
     testplan.js       the test matrix
     record.js         the calculation record
     csv.js  pdf.js    exports
-  main/               window, IPC, config and report stores
+    plot.js           plot geometry, shared by the screen and the report
+    session.js        the working session, shared by both builds
+    defaults.js       what both builds assume before being told otherwise
+  main/               desktop shell: window, IPC, config and report stores
+  web/                browser shell: the same session, served in the page
   renderer/           pure UI; owns no state and does no arithmetic
-test/                 47 tests
+test/                 164 tests
 samples/              synthetic demo line (not from a real relay)
 ```
 
-The renderer computes nothing. Every number it shows arrived over IPC already
-worked out, so a UI change cannot alter a result.
+The renderer computes nothing. Every number it shows arrived already worked
+out, so a UI change cannot alter a result.
+
+## Two builds, one instrument
+
+Ender runs as a Windows desktop app and as a web page, and they are the same
+program: `src/core` holds everything that decides what a report contains, and
+`src/renderer` only ever talks to a `window.ender` object. The desktop serves
+that object over IPC from the main process; the web build serves it from
+`src/web`, in the page. Nothing in the view layer knows which it is running
+in, and a test record does not depend on which produced it.
+
+The web build is static. There is no server, no account and no upload: the
+settings files you open are read in the browser and never leave the machine,
+which for relay data is the only arrangement worth offering. Saved reports go
+in the browser's own storage, so they stay on that machine too — and are not
+a substitute for filing the PDF somewhere real.
+
+```
+npm run web      build the browser version into site/
+npm run serve    serve it at http://localhost:4173
+```
+
+Build step aside, the shared modules ship unmodified: each is wrapped in a
+function so a browser can load it, with no transpiling and no minifying, and
+a test asserts the shipped text still matches the file on disk. The point of
+sharing the source is lost the moment what ships stops being what was tested.
 
 ## Commands
 
@@ -134,6 +163,9 @@ npm run smoke    load the demo line, build everything, render both PDFs
 npm run appshots capture every screen to tmp/shots
 npm run icon     regenerate build/icon.ico
 npm run dist     build the NSIS installer into dist/
+npm run web      build the browser version into site/
+npm run serve    serve the browser version locally
+npm run site     build the full published site (app + mockups)
 ```
 
 ## Packaging

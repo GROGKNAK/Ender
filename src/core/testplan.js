@@ -18,6 +18,55 @@ const { standardChecks } = require('./alpha');
 
 const DEFAULT_TYPES = ['AG', 'BC', 'ABC'];
 
+const A_OP = C.polar(1, 120);
+const A2_OP = C.polar(1, 240);
+
+/*
+ * Does enough current flow for the zone's fault detectors to let it operate?
+ *
+ * A distance element is supervised: the impedance can sit squarely inside the
+ * reach and the element still will not pick up if the current is below the
+ * detector thresholds. Ignoring that produces a test point marked OPERATE
+ * that a healthy relay will correctly fail to trip on.
+ */
+function evaluateSupervision(zone, base, currents) {
+  const sup = zone.supervision || {};
+  const [ia, ib, ic] = currents;
+
+  const residual = C.abs(C.add(C.add(ia, ib), ic));
+  const positive = C.abs(C.scale(C.add(C.add(ia, C.mul(A_OP, ib)), C.mul(A2_OP, ic)), 1 / 3));
+  const phaseToPhase = Math.max(
+    C.abs(C.sub(ia, ib)), C.abs(C.sub(ib, ic)), C.abs(C.sub(ic, ia))
+  );
+
+  const checks = [];
+  if (base === 'ground' && sup.ground !== null && sup.ground !== undefined) {
+    checks.push({ label: 'residual', setting: sup.groundFrom || '50GZ', need: sup.ground, got: residual });
+  }
+  if (base !== 'ground' && sup.phase !== null && sup.phase !== undefined) {
+    checks.push({ label: 'phase-to-phase', setting: sup.phaseFrom || '50PP', need: sup.phase, got: phaseToPhase });
+  }
+  if (sup.positive !== null && sup.positive !== undefined) {
+    checks.push({ label: 'positive sequence', setting: sup.positiveFrom || '50L', need: sup.positive, got: positive });
+  }
+
+  if (!checks.length) {
+    // Nothing to judge it against; say so rather than implying it passed.
+    return { checked: false, ok: null, checks: [], residual, positive, phaseToPhase };
+  }
+
+  const failed = checks.filter((c) => c.got <= c.need);
+  return {
+    checked: true,
+    ok: failed.length === 0,
+    checks,
+    failed,
+    residual,
+    positive,
+    phaseToPhase
+  };
+}
+
 /*
  * A lock has to survive the settings being changed, so it cannot be keyed on
  * the row number or the percentage. Zone, fault type and which side of the
@@ -26,6 +75,14 @@ const DEFAULT_TYPES = ['AG', 'BC', 'ABC'];
  */
 function lockKeyOf(row) {
   return row.zoneNo + '|' + row.type + '|' + row.pointKey;
+}
+
+/*
+ * The same idea for a differential check. Prefixed so a differential key can
+ * never collide with a distance one in the same map.
+ */
+function diffKeyOf(check) {
+  return 'D|' + check.phase + '|' + check.label;
 }
 
 function distanceTests(line, opts = {}) {
@@ -57,10 +114,21 @@ function distanceTests(line, opts = {}) {
         const vFaulted = Math.max(...q.local.v.map(C.abs).map((x, i) =>
           (C.abs(q.local.i[i]) > 1e-9 ? x : 0)));
 
+        /*
+         * Supervision can only hold an element back. An out-of-zone point is
+         * already expected to restrain, so this changes nothing there; it
+         * matters for an in-zone point that the relay cannot act on.
+         */
+        const supervision = evaluateSupervision(zone, type.base, q.local.i);
+        const starved = supervision.ok === false;
+        const expect21 = point.expect === 'OPERATE' && starved ? 'RESTRAIN' : point.expect;
+
         n += 1;
         rows.push({
           n,
           id: 'T' + String(n).padStart(2, '0'),
+          supervision,
+          heldBySupervision: point.expect === 'OPERATE' && starved,
           zone: zone.name,
           zoneNo: zone.n,
           reach: zone.reach,
@@ -81,7 +149,7 @@ function distanceTests(line, opts = {}) {
           zLoop,
           linePct,
           onLine,
-          expect21: point.expect,
+          expect21,
           expect87: onLine ? 'OPERATE' : 'RESTRAIN',
           local: q.local,
           remote: q.remote,
@@ -105,7 +173,11 @@ function differentialTests(line, opts = {}) {
   for (const phase of phases) {
     for (const check of standardChecks(line.d87, line.operator.testCurrent, phase)) {
       n += 1;
-      out.push(Object.assign({ n, id: 'D' + String(n).padStart(2, '0') }, check));
+      out.push(Object.assign({
+        n,
+        id: 'D' + String(n).padStart(2, '0'),
+        lockKey: diffKeyOf(check)
+      }, check));
     }
   }
   return out;
@@ -138,11 +210,26 @@ function buildPlan(line, opts = {}) {
     });
   });
 
-  const differential = differentialTests(line, opts);
+  let differential = differentialTests(line, opts);
+  differential = differential.map((check) => {
+    const lock = locks[check.lockKey];
+    if (!lock) return Object.assign({}, check, { locked: false });
+    return Object.assign({}, lock.row, {
+      n: check.n,
+      id: check.id,
+      lockKey: check.lockKey,
+      locked: true,
+      lockedAt: lock.at,
+      lockedOperator: lock.operator
+    });
+  });
+
   const warnings = distance.filter((r) => r.voltageWarning);
-  const lockedCount = distance.filter((r) => r.locked).length;
+  const lockedCount = distance.filter((r) => r.locked).length +
+    differential.filter((d) => d.locked).length;
   const reverseCount = distance.filter((r) => r.reverse).length;
   const unphysicalCount = distance.filter((r) => r.unphysical).length;
+  const starvedCount = distance.filter((r) => r.heldBySupervision).length;
 
   return {
     distance,
@@ -150,6 +237,7 @@ function buildPlan(line, opts = {}) {
     lockedCount,
     reverseCount,
     unphysicalCount,
+    starvedCount,
     counts: {
       distance: distance.length,
       differential: differential.length,
@@ -160,6 +248,48 @@ function buildPlan(line, opts = {}) {
   };
 }
 
+/**
+ * Drop the test points marked "omit from report".
+ *
+ * Applied only when exporting, so the omitted rows stay visible and reversible
+ * in the app. The count travels with the result because a report that quietly
+ * contains fewer tests than were run is a worse document than one that says so.
+ *
+ * @param {object} plan  from buildPlan()
+ * @param {object} omit  lock key -> true
+ */
+function applyOmissions(plan, omit) {
+  const flags = omit || {};
+  const kept = plan.distance.filter((r) => !flags[r.lockKey]);
+  const dropped = plan.distance.filter((r) => flags[r.lockKey]);
+  const keptD = plan.differential.filter((d) => !flags[d.lockKey]);
+  const droppedD = plan.differential.filter((d) => flags[d.lockKey]);
+
+  if (!dropped.length && !droppedD.length) {
+    return Object.assign({}, plan, { omittedCount: 0, omitted: [] });
+  }
+
+  return Object.assign({}, plan, {
+    distance: kept,
+    differential: keptD,
+    omittedCount: dropped.length + droppedD.length,
+    omitted: dropped.map((r) => ({
+      id: r.id, zone: r.zone, type: r.typeLabel, point: r.point
+    })).concat(droppedD.map((d) => ({
+      id: d.id, zone: '87L', type: d.phase, point: d.label
+    }))),
+    lockedCount: kept.filter((r) => r.locked).length + keptD.filter((d) => d.locked).length,
+    starvedCount: kept.filter((r) => r.heldBySupervision).length,
+    counts: Object.assign({}, plan.counts, {
+      distance: kept.length,
+      differential: keptD.length,
+      total: kept.length + keptD.length,
+      voltageWarnings: kept.filter((r) => r.voltageWarning).length
+    })
+  });
+}
+
 module.exports = {
-  buildPlan, distanceTests, differentialTests, lockKeyOf, DEFAULT_TYPES, FAULT_TYPES
+  buildPlan, distanceTests, differentialTests, lockKeyOf, diffKeyOf, applyOmissions,
+  DEFAULT_TYPES, FAULT_TYPES
 };

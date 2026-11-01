@@ -290,14 +290,14 @@ function zipOf(entries) {
   return Buffer.concat([...locals, cd, eocd]);
 }
 
-test('a zip of the native export is read', () => {
+test('a zip of the native export is read', async () => {
   const zip = zipOf([
     { name: 'RELAY/set_1.txt', text: SET_1 },
     { name: 'RELAY/set_2.txt', text: SET_2 },
     { name: 'RELAY/Misc/Device.txt', text: 'LINE NO. 1 PROTECTION RELAY' },
     { name: 'RELAY/Misc/thumb.png', text: 'not text' }
   ]);
-  const files = readZip(zip);
+  const files = await readZip(zip);
   assert.ok(files.some((f) => f.name.endsWith('set_1.txt')));
   assert.ok(!files.some((f) => f.name.endsWith('.png')), 'binary entries are skipped');
 
@@ -306,9 +306,9 @@ test('a zip of the native export is read', () => {
   assert.deepStrictEqual(p.groups, ['1', '2']);
 });
 
-test('stored (uncompressed) zip entries are read too', () => {
+test('stored (uncompressed) zip entries are read too', async () => {
   const zip = zipOf([{ name: 'set_1.txt', text: SET_1, deflate: false }]);
-  const files = readZip(zip);
+  const files = await readZip(zip);
   assert.strictEqual(files.length, 1);
   assert.ok(files[0].text.includes('Z1MAG'));
 });
@@ -321,8 +321,8 @@ test('protection groups are read before anything else in the folder', () => {
   assert.deepStrictEqual(sorted, ['set_1.txt', 'set_2.txt', 'set_L1.txt', 'Misc/Cfg.txt']);
 });
 
-test('a file that is not a zip is refused clearly', () => {
-  assert.throws(() => readZip(Buffer.from('definitely not a zip')), /not a zip/i);
+test('a file that is not a zip is refused clearly', async () => {
+  await assert.rejects(() => readZip(Buffer.from('definitely not a zip')), /not a zip/i);
 });
 
 /* ---------------------------------------------------------------- locking */
@@ -452,4 +452,277 @@ test('a setting only present in a disregarded group is flagged', () => {
   assert.strictEqual(entry.status, 'duplicate');
   assert.strictEqual(entry.value, '9', 'the chosen group wins');
   assert.deepStrictEqual(entry.others, [{ group: '2', value: '5' }]);
+});
+
+/* ------------------------------------------------- omit from report ------ */
+
+const { applyOmissions } = require('../src/core/testplan');
+const { testPlanCsv } = require('../src/core/csv');
+const { testReportPdf, recordPdf } = require('../src/core/pdf');
+
+test('omitted points are dropped and counted', () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const key = full.distance[2].lockKey;
+  const cut = applyOmissions(full, { [key]: true });
+
+  assert.strictEqual(cut.distance.length, full.distance.length - 1);
+  assert.strictEqual(cut.omittedCount, 1);
+  assert.ok(!cut.distance.some((r) => r.lockKey === key));
+  assert.strictEqual(cut.omitted[0].id, full.distance[2].id);
+  assert.strictEqual(cut.counts.distance, full.counts.distance - 1);
+  assert.strictEqual(cut.counts.total, full.counts.total - 1);
+});
+
+test('omitting nothing leaves the plan untouched', () => {
+  const full = buildPlan(demoLine());
+  const same = applyOmissions(full, {});
+  assert.strictEqual(same.distance.length, full.distance.length);
+  assert.strictEqual(same.omittedCount, 0);
+});
+
+test('omitting a flagged point also drops its warning from the counts', () => {
+  // A low threshold so this fixture's short zones trip it; the point is the
+  // counting, not the particular voltage.
+  const line = demoLine({ faultModel: 'constantCurrent', warnVolts: 40 });
+  const full = buildPlan(line);
+  const hot = full.distance.find((r) => r.voltageWarning);
+  assert.ok(hot, 'the threshold is low enough to flag something');
+  assert.ok(full.counts.voltageWarnings > 0);
+  const cut = applyOmissions(full, { [hot.lockKey]: true });
+  assert.strictEqual(cut.counts.voltageWarnings, full.counts.voltageWarnings - 1);
+});
+
+test('the record drops omitted points and says nothing about them', () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const dropped = full.distance[0];
+  const cut = applyOmissions(full, { [dropped.lockKey]: true });
+  const rec = buildRecord({ line, plan: cut, local: null, remote: null });
+
+  assert.strictEqual(rec.tests.length, full.distance.length - 1);
+  assert.ok(!rec.tests.some((t) => t.id === dropped.id), 'the point is gone');
+  // Deliberately silent: the record covers what was tested, not what was dropped.
+  assert.ok(!rec.assumptions.some((a) => /omit/i.test(a)), 'no mention in the exclusions');
+  assert.ok(!JSON.stringify(rec.tests).includes('omit'), 'no mention anywhere in the tests');
+});
+
+test('the csv notes the omission; the pdf deliverable does not', async () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const cut = applyOmissions(full, { [full.distance[0].lockKey]: true });
+
+  // The CSV is the working file: whoever ran the tests should see a point was
+  // dropped. The PDF is the deliverable and carries only what was tested.
+  const body = testPlanCsv({ plan: cut, line, names: {} }).replace(/^﻿/, '');
+  assert.ok(/Omitted from this report/.test(body), 'the csv states the omission');
+  assert.ok(/T01/.test(body.split('Omitted from this report')[1] || ''), 'and names the point');
+  assert.ok(!/^T01,/m.test(body), 'while the row itself is gone from the body');
+  assert.ok(/^T02,/m.test(body), 'the remaining rows are intact');
+
+  const bytes = await testReportPdf({ plan: cut, line, names: {}, org: {} });
+  assert.ok(bytes.length > 2000);
+});
+
+test('a report name reaches the pdf and is sanitised for the fonts', async () => {
+  const line = demoLine();
+  const plan = buildPlan(line);
+  const named = await testReportPdf({
+    plan, line, names: { local: 'A', remote: 'B' }, org: {},
+    reportTitle: 'Line 1 — spring outage Ω'
+  });
+  const plain = await testReportPdf({ plan, line, names: { local: 'A', remote: 'B' }, org: {} });
+  assert.ok(named.length > 2000);
+  assert.notStrictEqual(named.length, plain.length, 'the title changes the document');
+});
+
+test('a report with every point omitted still renders', async () => {
+  const line = demoLine();
+  const full = buildPlan(line);
+  const all = {};
+  for (const r of full.distance) all[r.lockKey] = true;
+  const cut = applyOmissions(full, all);
+  assert.strictEqual(cut.distance.length, 0);
+  assert.strictEqual(cut.omittedCount, full.distance.length);
+
+  const rec = buildRecord({ line, plan: cut, local: null, remote: null });
+  assert.strictEqual(rec.tests.length, 0);
+  assert.strictEqual(rec.selfCheck.ok, true, 'no tests means no failed residuals');
+
+  const bytes = await testReportPdf({ plan: cut, line, names: {}, org: {} });
+  assert.ok(bytes.length > 1500);
+  const rbytes = await recordPdf({ record: rec, line, names: {}, org: {}, provenance: [] });
+  assert.ok(rbytes.length > 1500);
+});
+
+/* --------------------------------------- differential lock and omit ------ */
+
+const { diffKeyOf } = require('../src/core/testplan');
+
+test('a differential check carries a stable lock key', () => {
+  const a = buildPlan(demoLine()).differential[0];
+  const b = buildPlan(demoLine({ d87Override: { r: 4 } })).differential[0];
+  assert.strictEqual(a.lockKey, b.lockKey, 'the key survives a characteristic change');
+  assert.ok(a.lockKey.startsWith('D|'), 'and cannot collide with a distance key');
+  assert.notStrictEqual(diffKeyOf(a), buildPlan(demoLine()).differential[1].lockKey);
+});
+
+test('a locked differential check ignores a characteristic change', () => {
+  const first = buildPlan(demoLine());
+  const check = first.differential.find((d) => d.label === 'Outer radius, outside');
+  const locks = { [check.lockKey]: { row: check, operator: {}, at: 'x' } };
+
+  const after = buildPlan(demoLine({ d87Override: { r: 4 } }), { locks });
+  const locked = after.differential.find((d) => d.lockKey === check.lockKey);
+  const free = after.differential.find((d) => d.label === 'Outer radius, inside');
+
+  assert.strictEqual(locked.locked, true);
+  assert.strictEqual(locked.ratio.magnitude, check.ratio.magnitude, 'frozen');
+  assert.notStrictEqual(free.ratio.magnitude, first.differential
+    .find((d) => d.label === 'Outer radius, inside').ratio.magnitude, 'the rest moved');
+});
+
+test('omitting a differential check drops it from the export', () => {
+  const plan = buildPlan(demoLine());
+  const check = plan.differential[0];
+  const cut = applyOmissions(plan, { [check.lockKey]: true });
+
+  assert.strictEqual(cut.differential.length, plan.differential.length - 1);
+  assert.ok(!cut.differential.some((d) => d.lockKey === check.lockKey));
+  assert.strictEqual(cut.counts.differential, plan.counts.differential - 1);
+  assert.strictEqual(cut.omittedCount, 1);
+  // Distance points are untouched by a differential omission.
+  assert.strictEqual(cut.distance.length, plan.distance.length);
+});
+
+test('distance and differential omissions can be mixed', () => {
+  const plan = buildPlan(demoLine());
+  const cut = applyOmissions(plan, {
+    [plan.distance[0].lockKey]: true,
+    [plan.differential[0].lockKey]: true
+  });
+  assert.strictEqual(cut.omittedCount, 2);
+  assert.strictEqual(cut.distance.length, plan.distance.length - 1);
+  assert.strictEqual(cut.differential.length, plan.differential.length - 1);
+  assert.strictEqual(cut.counts.total, plan.counts.total - 2);
+});
+
+/* ------------------------------------------- distance supervision -------- */
+
+// The base fixture carries no fault detectors, so supervision needs its own.
+const SUPERVISED = REPORT.replace('</table>',
+  reportRow('1', '50PP1', 'Range = 0.25 to 100.00', '0.50', '0.50') +
+  reportRow('1', '50L1', 'Range = 0.25 to 100.00', '0.50', '0.50') +
+  reportRow('1', '50GZ1', 'Range = 0.25 to 100.00', '0.50', '0.50') + '</table>');
+
+function supervisedLine(op) {
+  const r = buildRelay(parseSettings(SUPERVISED), { fileName: 'r.html', rawText: SUPERVISED });
+  return buildLine(r, r, Object.assign({ faultModel: 'constantCurrent' }, op));
+}
+
+test('supervision settings are read per zone', () => {
+  const r = buildRelay(parseSettings(SUPERVISED), { fileName: 'r.html' });
+  const z1 = r.zones.find((z) => z.n === 1);
+  assert.strictEqual(z1.supervision.phase, 0.5);
+  assert.strictEqual(z1.supervision.phaseFrom, '50PP1');
+  assert.strictEqual(z1.supervision.ground, 0.5);
+  assert.strictEqual(z1.supervision.groundFrom, '50GZ1');
+  assert.strictEqual(z1.supervision.positive, 0.5);
+});
+
+test('a zone that cannot see enough current expects RESTRAIN', () => {
+  const plenty = buildPlan(supervisedLine({ testCurrent: 5 }));
+  const starved = buildPlan(supervisedLine({ testCurrent: 0.2 }));
+  const pick = (p) => p.distance.find((r) => r.zoneNo === 1 && r.pointKey === 'in' && r.type === 'AG');
+
+  assert.strictEqual(pick(plenty).expect21, 'OPERATE');
+  assert.strictEqual(pick(plenty).heldBySupervision, false);
+
+  const low = pick(starved);
+  assert.strictEqual(low.expect21, 'RESTRAIN', 'supervised out');
+  assert.strictEqual(low.heldBySupervision, true);
+  assert.ok(starved.starvedCount > 0);
+  // The impedance is unchanged; only the current decided it.
+  assert.strictEqual(low.pctOfReach, pick(plenty).pctOfReach);
+});
+
+test('supervision never turns a RESTRAIN into an OPERATE', () => {
+  const starved = buildPlan(supervisedLine({ testCurrent: 0.2 }));
+  for (const r of starved.distance.filter((x) => x.pointKey === 'out')) {
+    assert.strictEqual(r.expect21, 'RESTRAIN', r.id + ' stays restrained');
+    assert.strictEqual(r.heldBySupervision, false, 'and is not attributed to supervision');
+  }
+});
+
+test('with no supervision settings the condition is reported as unjudged', () => {
+  // The fixture carries zone reaches but no 50PP/50L/50GZ settings.
+  const plan = buildPlan(demoLine({ testCurrent: 0.05 }));
+  const row = plan.distance[0];
+  assert.strictEqual(row.supervision.checked, false);
+  assert.strictEqual(row.supervision.ok, null, 'not judged rather than judged as passing');
+  assert.strictEqual(row.expect21, 'OPERATE', 'so the impedance alone decides');
+});
+
+/* ------------------------------------------------------------ sign-offs - */
+
+test('a sign-off stays with its test when the set is reordered', () => {
+  const line = demoLine();
+  const full = buildPlan(line, { faultTypes: ['AG', 'BC', 'ABC'] });
+  const target = full.distance.find((r) => r.zoneNo === 1 && r.type === 'BC' && r.pointKey === 'in');
+  const signoff = { ['L|' + target.lockKey]: 'PASS' };
+
+  // Drop A-G: every row index shifts, but identity does not.
+  const fewer = buildPlan(line, { faultTypes: ['BC', 'ABC'] });
+  const moved = fewer.distance.find((r) => r.lockKey === target.lockKey);
+  assert.ok(moved, 'the test still exists');
+  assert.notStrictEqual(moved.n, target.n, 'and has moved position');
+
+  const csv = testPlanCsv({ plan: fewer, line, names: {}, signoff }).replace(/^﻿/, '');
+  const row = csv.split('\r\n').find((l) => l.startsWith(moved.id + ','));
+  assert.ok(row.endsWith('PASS,'), 'the sign-off followed the test, not the row number');
+
+  // And nothing else picked it up.
+  const others = csv.split('\r\n').filter((l) => /^T\d/.test(l) && !l.startsWith(moved.id + ','));
+  assert.ok(others.every((l) => !/PASS/.test(l)), 'no other test inherited it');
+});
+
+test('sign-offs saved against row positions are still read', () => {
+  const line = demoLine();
+  const plan = buildPlan(line);
+  const legacy = { L0: 'NOOP' };
+  const csv = testPlanCsv({ plan, line, names: {}, signoff: legacy }).replace(/^﻿/, '');
+  const first = csv.split('\r\n').find((l) => l.startsWith('T01,'));
+  assert.ok(/NOOP/.test(first), 'an older saved report still shows its sign-offs');
+});
+
+test('87L checks carry their own sign-offs through to the csv', () => {
+  const line = demoLine();
+  const plan = buildPlan(line);
+  const check = plan.differential[0];
+  const signoff = { ['L|' + check.lockKey]: 'PASS', ['R|' + check.lockKey]: 'RETEST' };
+
+  const csv = testPlanCsv({ plan, line, names: {}, signoff }).replace(/^﻿/, '');
+  const row = csv.split('\r\n').find((l) => l.startsWith(check.id + ','));
+  assert.ok(/PASS/.test(row) && /RETEST/.test(row), 'both ends recorded');
+});
+
+test('87L sign-offs do not leak onto the distance tests', () => {
+  const line = demoLine();
+  const plan = buildPlan(line);
+  const check = plan.differential[0];
+  const signoff = { ['L|' + check.lockKey]: 'DEFER' };
+  const csv = testPlanCsv({ plan, line, names: {}, signoff }).replace(/^﻿/, '');
+  const distanceRows = csv.split('\r\n').filter((l) => /^T\d/.test(l));
+  assert.ok(distanceRows.every((l) => !/DEFER/.test(l)));
+});
+
+test('the report pdf renders with sign-offs on both tables', async () => {
+  const line = demoLine();
+  const plan = buildPlan(line);
+  const signoff = {
+    ['L|' + plan.distance[0].lockKey]: 'PASS',
+    ['L|' + plan.differential[0].lockKey]: 'FAIL'
+  };
+  const bytes = await testReportPdf({ plan, line, names: { local: 'A', remote: 'B' }, org: {}, signoff });
+  assert.ok(bytes.length > 2000);
 });

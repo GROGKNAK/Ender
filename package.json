@@ -20,7 +20,10 @@
     "shots": "electron scripts/shoot.js",
     "demo": "electron scripts/demo.js",
     "appshots": "electron . --shots",
-    "icon": "electron scripts/make-icon.js"
+    "icon": "electron scripts/make-icon.js",
+    "web": "node scripts/build-web.js",
+    "site": "node scripts/build-site.js",
+    "serve": "node scripts/serve.js"
   },
   "devDependencies": {
     "electron": "^45.1.0",

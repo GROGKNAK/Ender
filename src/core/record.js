@@ -279,6 +279,19 @@ function testBlocks(row, line, inputs) {
   }
   rows.push(['error = ' + residual.toExponential(1) + ' ' + OHM]);
 
+  if (row.supervision && row.supervision.checked) {
+    const supRows = row.supervision.checks.map((c) => [
+      c.label + ': ' + n(c.got, 3) + ' A ' + (c.got > c.need ? '>' : '≤') + ' ' +
+      n(c.need, 3) + ' A  [' + c.setting + ']' + (c.got > c.need ? '   ok' : '   FAILS')
+    ]);
+    out.push(block('supervision', supRows, row.heldBySupervision
+      ? 'The impedance sits inside the reach, but the current is below a fault detector threshold, ' +
+        'so the element cannot operate. The expected result is RESTRAIN for that reason, not ' +
+        'because of where the fault is. Raise the test current or this point proves nothing.'
+      : 'Every fault detector threshold for this zone is cleared, so supervision does not hold the ' +
+        'element back and the verdict rests on the impedance alone.'));
+  }
+
   out.push(block('Zᴄʜᴇᴄᴋ', rows,
     k0Error === null
       ? 'The derived quantities are worked back to an impedance using the loop the relay actually measures. It reproduces the placement value above, so the voltages and currents in this block are consistent with the fault they claim to represent. A reviewer can repeat this line with a calculator.'
@@ -383,6 +396,10 @@ function buildRecord(args) {
     tests,
     alpha: alphaSection(line, inputs),
     differential: plan.differential,
+    omittedCount: plan.omittedCount || 0,
+    omitted: plan.omitted || [],
+    // Omitted points are simply absent from the record: they are excluded
+    // before it is built and nothing here refers to them.
     assumptions: assumptions(line).concat(lockedTests
       ? ['' + lockedTests + ' of ' + tests.length + ' test points are locked: they were computed ' +
          'earlier and are not affected by the settings in Section A. Each one states the settings ' +

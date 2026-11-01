@@ -13,12 +13,10 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } = require('el
 const path = require('path');
 const fs = require('fs');
 
-const { parseMany } = require('../core/parseSettings');
 const { readSource } = require('../core/bundle');
-const { buildRelay, validateRelay, compareEnds } = require('../core/relay');
-const { buildLine, DEFAULT_OPERATOR, FAULT_MODELS } = require('../core/line');
-const { buildPlan, lockKeyOf } = require('../core/testplan');
-const { buildRecord } = require('../core/record');
+const { DEFAULT_OPERATOR } = require('../core/line');
+const { lockKeyOf } = require('../core/testplan');
+const { createSession } = require('../core/session');
 const { testPlanCsv } = require('../core/csv');
 const { testReportPdf, recordPdf } = require('../core/pdf');
 const { Store, sha256 } = require('./store');
@@ -33,25 +31,29 @@ let mainWindow = null;
 let store = null;
 
 /*
- * The working session. Held here rather than in the renderer so that a
- * navigation, a reload, or a crashed view cannot lose a half-entered run.
+ * The working session, and everything that turns it into a plan, a record
+ * and an export bundle. That logic is shared with the web build -- see
+ * core/session.js -- so the two produce the same report from the same two
+ * files. What stays here is the platform: the file system, the dialogs and
+ * the store.
  */
-const session = {
-  local: null,
-  remote: null,
-  names: { local: '', remote: '' },
-  operator: Object.assign({}, DEFAULT_OPERATOR),
-  signoff: {},
-  /*
-   * Locked test points, by lock key. A lock holds the frozen row and the
-   * settings it was computed under, so experimenting elsewhere cannot move a
-   * test line that has already been agreed.
-   */
-  locks: {},
-  plan: null,
-  record: null,
-  reportId: null
-};
+const S = createSession({
+  readSource,
+  hash: sha256,
+  byteLength: (text) => Buffer.byteLength(text),
+  basename: (target) => path.basename(target),
+  appVersion: () => app.getVersion(),
+  store: {
+    getConfig: () => store.getConfig(),
+    getReport: (id) => store.getReport(id)
+  }
+});
+
+const session = S.state;
+const {
+  invalidate, loadEnd, summary, endSummary, experimentalDeviations,
+  buildAll, provenance, fingerprint, exportBundle
+} = S;
 
 /* ------------------------------------------------------------------ window */
 
@@ -156,155 +158,6 @@ function runShots() {
   });
 }
 
-/* -------------------------------------------------------------- session -- */
-
-/*
- * One end's settings, from whatever shape they arrived in: a single export, a
- * zip, or the native folder of per-group files. readSource() flattens all
- * three to a list of texts so everything below this line is the same.
- */
-function loadEnd(end, target) {
-  const source = readSource(target);
-  const parsed = parseMany(source.sources, {});
-  const rawText = source.sources.map((s) => s.text).join('\n');
-  const relay = buildRelay(parsed, { fileName: source.label, rawText });
-  const entry = {
-    end,
-    filePath: target,
-    fileName: source.label,
-    sourceKind: source.kind,
-    fileCount: source.sources.length,
-    files: parsed.files || [],
-    bytes: Buffer.byteLength(rawText),
-    hash: sha256(rawText),
-    relay,
-    problems: validateRelay(relay)
-  };
-  session[end] = entry;
-  const fallback = relay.rid || path.basename(filePath).replace(/\.[^.]+$/, '');
-  if (!session.names[end]) session.names[end] = fallback;
-  invalidate();
-  return summary();
-}
-
-/** Anything derived is discarded whenever an input changes. */
-function invalidate() {
-  session.plan = null;
-  session.record = null;
-}
-
-function endSummary(entry, name) {
-  if (!entry) return null;
-  const r = entry.relay;
-  return {
-    fileName: entry.fileName,
-    filePath: entry.filePath,
-    sourceKind: entry.sourceKind,
-    fileCount: entry.fileCount,
-    files: entry.files,
-    layout: r.layout,
-    format: r.kind,
-    group: r.group,
-    groups: r.groups,
-    enables: r.enables,
-    bytes: entry.bytes,
-    hash: entry.hash,
-    hashShort: entry.hash.slice(0, 4) + '…' + entry.hash.slice(-4),
-    name,
-    model: r.model,
-    rid: r.rid,
-    ridFrom: r.ridFrom,
-    tid: r.tid,
-    serial: r.serial,
-    ctr: r.ctr ? r.ctr.value : null,
-    ptr: r.ptr ? r.ptr.value : null,
-    settingCount: r.settingCount,
-    usedCount: r.catalogue.filter((c) => c.status === 'used').length,
-    duplicateCount: r.catalogue.filter((c) => c.status === 'duplicate').length,
-    unusedCount: r.catalogue.filter((c) => c.status === 'unused').length,
-    catalogue: r.catalogue.slice(0, 1500),
-    problems: entry.problems,
-    zones: r.zones
-  };
-}
-
-function summary() {
-  const both = session.local && session.remote;
-  let line = null;
-  let comparison = [];
-
-  if (both) {
-    comparison = compareEnds(session.local.relay, session.remote.relay);
-    try {
-      const m = buildLine(session.local.relay, session.remote.relay, session.operator);
-      line = {
-        z1: m.z1,
-        z0: m.z0,
-        z1mag: m.z1mag.value,
-        z1ang: m.z1ang.value,
-        z0mag: m.z0mag.value,
-        z0ang: m.z0ang.value,
-        k0: m.k0,
-        k0p1: m.k0p1,
-        k0Source: m.k0Source,
-        zones: m.zones,
-        d87: m.d87,
-        ctr: m.ctr ? m.ctr.value : null,
-        ptr: m.ptr ? m.ptr.value : null,
-        length: m.lengthUnits ? m.lengthUnits.value : null
-      };
-    } catch (err) {
-      line = { error: err.message };
-    }
-  }
-
-  return {
-    local: endSummary(session.local, session.names.local),
-    remote: endSummary(session.remote, session.names.remote),
-    names: session.names,
-    operator: session.operator,
-    signoff: session.signoff,
-    comparison,
-    line,
-    faultModels: FAULT_MODELS,
-    ready: Boolean(both && line && !line.error),
-    hasPlan: Boolean(session.plan),
-    reportId: session.reportId
-  };
-}
-
-function requireLine() {
-  if (!session.local || !session.remote) throw new Error('Both settings files must be loaded first');
-  return buildLine(session.local.relay, session.remote.relay, session.operator);
-}
-
-function buildAll() {
-  const line = requireLine();
-  session.plan = buildPlan(line, { locks: session.locks });
-  session.record = buildRecord({
-    line,
-    plan: session.plan,
-    local: session.local.relay,
-    remote: session.remote.relay,
-    meta: { appVersion: app.getVersion() }
-  });
-  return { line, plan: session.plan, record: session.record };
-}
-
-function provenance() {
-  return ['local', 'remote'].filter((e) => session[e]).map((e) => ({
-    end: e === 'local' ? 'Local' : 'Remote',
-    fileName: session[e].fileName,
-    hash: session[e].hash.slice(0, 16),
-    model: session[e].relay.model,
-    serial: session[e].relay.serial
-  }));
-}
-
-function fingerprint() {
-  return sha256(['local', 'remote'].map((e) => (session[e] ? session[e].hash : '')).join('|')).slice(0, 16);
-}
-
 /* ------------------------------------------------------------------- ipc -- */
 
 /* Every handler is wrapped so a thrown error reaches the UI as a message
@@ -364,112 +217,46 @@ handle('files:pickFolder', async (end) => {
 
 handle('files:load', (end, filePath) => loadEnd(end, filePath));
 
-handle('files:loadDemo', () => {
-  loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
-  loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
+handle('files:loadDemo', async () => {
+  await loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
+  await loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
   return summary();
 });
 
 handle('session:get', () => summary());
 
 handle('session:clear', () => {
-  session.local = null;
-  session.remote = null;
-  session.names = { local: '', remote: '' };
-  session.signoff = {};
-  session.reportId = null;
-  invalidate();
+  S.clear();
   return summary();
 });
 
-handle('session:setName', (end, name) => {
-  session.names[end] = String(name || '').trim() || session.names[end];
-  return summary();
-});
+handle('session:setName', (end, name) => S.setName(end, name));
 
-handle('session:swap', () => {
-  const l = session.local;
-  session.local = session.remote;
-  session.remote = l;
-  if (session.local) session.local.end = 'local';
-  if (session.remote) session.remote.end = 'remote';
-  const n = session.names.local;
-  session.names.local = session.names.remote;
-  session.names.remote = n;
-  invalidate();
-  return summary();
-});
+handle('session:swap', () => S.swap());
 
-handle('session:setOperator', (patch) => {
-  session.operator = Object.assign({}, session.operator, patch || {});
-  invalidate();
-  return summary();
-});
+handle('session:setOperator', (patch) => S.setOperator(patch));
 
-handle('session:setSignoff', (key, value) => {
-  session.signoff[key] = value;
-  return { signoff: session.signoff };
-});
+handle('session:setSignoff', (key, value) => S.setSignoff(key, value));
+
+handle('session:setReportTitle', (title) => S.setReportTitle(title));
+
+handle('session:setOmit', (key, omitted) => S.setOmit(key, omitted));
 
 handle('plan:build', () => {
   const { plan } = buildAll();
   return plan;
 });
 
-/*
- * Locking freezes a row as it stands. The row is captured from a plan built
- * with the lock absent, so locking never captures an already-frozen copy of
- * itself, and the operator settings travel with it for the record.
- */
-handle('plan:lock', (key) => {
-  const line = requireLine();
-  const live = buildPlan(line, { locks: {} });
-  const row = live.distance.find((r) => lockKeyOf(r) === key);
-  if (!row) throw new Error('No such test point: ' + key);
-  session.locks[key] = {
-    row,
-    operator: JSON.parse(JSON.stringify(session.operator)),
-    at: new Date().toISOString()
-  };
-  invalidate();
-  return buildAll().plan;
-});
-
-handle('plan:unlock', (key) => {
-  delete session.locks[key];
-  invalidate();
-  return buildAll().plan;
-});
-
-handle('plan:unlockAll', () => {
-  session.locks = {};
-  invalidate();
-  return buildAll().plan;
-});
-
-/* Experimental settings are everything the operator can change after the
- * files are loaded. Clearing returns to the stored defaults, leaving locked
- * rows alone -- that is the point of locking them. */
-handle('session:clearExperimental', () => {
-  const defaults = store.getConfig().defaults;
-  session.operator = Object.assign({}, DEFAULT_OPERATOR, defaults, { d87Override: null });
-  invalidate();
-  return summary();
-});
-
-handle('session:setD87Override', (patch) => {
-  if (!patch) session.operator.d87Override = null;
-  else session.operator.d87Override = Object.assign({}, session.operator.d87Override, patch);
-  invalidate();
-  return summary();
-});
+handle('plan:lock', (key) => S.lock(key));
+handle('plan:unlock', (key) => S.unlock(key));
+handle('plan:unlockAll', () => S.unlockAll());
+handle('session:clearExperimental', () => S.clearExperimental());
+handle('session:setD87Override', (patch) => S.setD87Override(patch));
 
 handle('record:build', () => {
   if (!session.record) buildAll();
   return session.record;
 });
-
-/* ---------------------------------------------------------------- export - */
 
 async function askSave(defaultName, extension, label) {
   const res = await dialog.showSaveDialog(mainWindow, {
@@ -481,41 +268,36 @@ async function askSave(defaultName, extension, label) {
   return res.filePath;
 }
 
-function slug(s) {
-  return String(s || 'ender').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'ender';
-}
-
-function baseName() {
-  return slug(session.names.local) + '-' + slug(session.names.remote);
-}
-
-handle('export:csv', async () => {
-  const { line, plan } = session.plan ? { line: requireLine(), plan: session.plan } : buildAll();
-  const target = await askSave(baseName() + '-tests.csv', 'csv', 'test plan CSV');
+handle('export:csv', async (savedId) => {
+  const b = exportBundle(savedId);
+  const target = await askSave(b.base + '-tests.csv', 'csv', 'test plan CSV');
   if (!target) return null;
   fs.writeFileSync(target, testPlanCsv({
-    plan, line, names: session.names, signoff: session.signoff
+    plan: b.plan, line: b.line, names: b.names, signoff: b.signoff
   }), 'utf8');
   return target;
 });
 
-handle('export:reportPdf', async () => {
-  const { line, plan } = session.plan ? { line: requireLine(), plan: session.plan } : buildAll();
-  const target = await askSave(baseName() + '-report.pdf', 'pdf', 'test report');
+handle('export:reportPdf', async (savedId) => {
+  const b = exportBundle(savedId);
+  const target = await askSave(b.base + '-report.pdf', 'pdf', 'test report');
   if (!target) return null;
   const bytes = await testReportPdf({
-    plan, line, names: session.names, org: store.getConfig().org, signoff: session.signoff
+    plan: b.plan, line: b.line, names: b.names, org: store.getConfig().org,
+    signoff: b.signoff, reportTitle: b.title
   });
   fs.writeFileSync(target, Buffer.from(bytes));
   return target;
 });
 
-handle('export:recordPdf', async () => {
-  const { line, record } = session.record ? { line: requireLine(), record: session.record } : buildAll();
-  const target = await askSave(baseName() + '-calculation-record.pdf', 'pdf', 'calculation record');
+handle('export:recordPdf', async (savedId) => {
+  const b = exportBundle(savedId);
+  if (!b.record) throw new Error('That saved report holds no calculation record');
+  const target = await askSave(b.base + '-calculation-record.pdf', 'pdf', 'calculation record');
   if (!target) return null;
   const bytes = await recordPdf({
-    record, line, names: session.names, org: store.getConfig().org, provenance: provenance()
+    record: b.record, line: b.line, names: b.names,
+    org: store.getConfig().org, provenance: b.provenance, reportTitle: b.title
   });
   fs.writeFileSync(target, Buffer.from(bytes));
   return target;
@@ -544,10 +326,16 @@ handle('reports:usage', () => store.usage());
 handle('reports:get', (id) => store.getReport(id));
 handle('reports:delete', (id) => store.deleteReport(id));
 
-handle('reports:save', (extra) => {
-  if (!session.plan) buildAll();
+/*
+ * A saved report holds everything needed to produce its documents again --
+ * the line model, the plan and the record -- so it can be downloaded later
+ * without the original settings files, which may have moved or changed.
+ */
+handle('reports:save', async (extra) => {
+  const b = exportBundle(null);
   const saved = store.saveReport(Object.assign({
     id: session.reportId,
+    title: b.title,
     names: session.names,
     relays: {
       local: endSummary(session.local, session.names.local),
@@ -555,12 +343,29 @@ handle('reports:save', (extra) => {
     },
     operator: session.operator,
     signoff: session.signoff,
-    counts: session.plan.counts,
+    omit: session.omit,
+    locks: session.locks,
+    counts: b.plan.counts,
+    omittedCount: b.plan.omittedCount || 0,
+    lockedCount: b.plan.lockedCount || 0,
     model: session.operator.faultModel,
-    fingerprint: fingerprint(),
-    provenance: provenance()
+    fingerprint: await fingerprint(),
+    provenance: b.provenance,
+    line: b.line,
+    plan: b.plan,
+    record: b.record
   }, extra || {}));
   session.reportId = saved.id;
+  return saved;
+});
+
+handle('reports:rename', (id, title) => {
+  const saved = store.getReport(id);
+  if (!saved) throw new Error('No saved report with id ' + id);
+  const next = String(title || '').trim();
+  if (!next) throw new Error('A report needs a name');
+  saved.title = next;
+  store.saveReport(saved);
   return saved;
 });
 
@@ -589,8 +394,8 @@ function runSmoke() {
     const step = (name) => { stage = name; };
     try {
       step('load demo files');
-      loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
-      loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
+      await loadEnd('local', path.join(SAMPLES, 'DEMO_ALPHA_LN1_Settings.html'));
+      await loadEnd('remote', path.join(SAMPLES, 'DEMO_BRAVO_LN1_Settings.html'));
       const { line, plan, record } = buildAll();
 
       if (!plan.distance.length) return fail('no test points generated');
@@ -601,6 +406,175 @@ function runSmoke() {
        * moves every other point, and must come back under the new settings
        * once unlocked.
        */
+      /*
+       * A slider cannot land on 87.5, which is the whole reason the typed box
+       * exists. Check the box reaches the session, not just the slider.
+       */
+      step('typed value entry');
+      const typed = await mainWindow.webContents.executeJavaScript(
+        '(async function () {' +
+        // Make sure the renderer has a loaded session before relying on the
+        // workflow nav, rather than assuming an earlier step left it ready.
+        '  var demo = document.querySelector(\'[data-act="demo"]\');' +
+        '  if (demo) demo.click();' +
+        '  var link = null;' +
+        '  var t0 = Date.now();' +
+        '  while (Date.now() - t0 < 8000) {' +
+        '    link = document.querySelector(\'[data-route="distance"]\');' +
+        '    if (link && !link.classList.contains("disabled")) break;' +
+        '    await new Promise(function (r) { setTimeout(r, 120); });' +
+        '  }' +
+        '  if (!link || link.classList.contains("disabled")) return "distance never became reachable";' +
+        '  link.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 800); });' +
+        '  var box = document.querySelector(\'[data-num="inZonePct"] [data-numbox]\');' +
+        '  if (!box) {' +
+        '    var link = document.querySelector(\'[data-route="distance"]\');' +
+        '    return "no box; link=" + (link ? link.className || "(no class)" : "missing") +' +
+        '      "; heading=" + ((document.querySelector("main h2") || {}).textContent || "?") +' +
+        '      "; fields=" + document.querySelectorAll("[data-num]").length;' +
+        '  }' +
+        '  box.value = "87.5";' +
+        '  box.dispatchEvent(new Event("change", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 700); });' +
+        '  var s = await window.ender.session.get();' +
+        '  var range = document.querySelector(\'[data-num="inZonePct"] [data-numrange]\').value;' +
+        '  var result = String(s.operator.inZonePct) + "/" + String(range);' +
+        // Leave the renderer where it was found; later checks start from the
+        // settings screen and a stranded view breaks them.
+        '  var back = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (back) back.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  return result;' +
+        '})()'
+      );
+      if (typed !== '87.5/87.5') {
+        return fail('a typed value did not reach the session and the slider (got ' + typed + ')');
+      }
+      session.operator.inZonePct = 85;
+      invalidate();
+      buildAll();
+      console.log('[smoke] typed 87.5 into the box, slider and session both followed');
+
+      /*
+       * The generated checks are derived from the characteristic, so changing
+       * 87LR has to move them. They were previously drawn once at mount and
+       * went stale the moment anything was adjusted.
+       */
+      step('87L checks follow the characteristic');
+      const followed = await mainWindow.webContents.executeJavaScript(
+        '(async function () {' +
+        '  var link = document.querySelector(\'[data-route="differential"]\');' +
+        '  if (!link || link.classList.contains("disabled")) return "differential not reachable";' +
+        '  link.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 900); });' +
+        '  var rowText = function () {' +
+        '    var rows = document.querySelectorAll("#dchecks tr");' +
+        '    return rows.length > 3 ? rows[3].textContent : "";' +
+        '  };' +
+        '  var before = rowText();' +
+        '  if (!before) return "no checks table";' +
+        '  var box = document.querySelector(\'[data-num="d87r"] [data-numbox]\');' +
+        '  if (!box) return "no 87LR control";' +
+        '  box.value = "4";' +
+        '  box.dispatchEvent(new Event("change", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 1400); });' +
+        '  var after = rowText();' +
+        '  var sess = await window.ender.session.get();' +
+        '  var rangeEl = document.querySelector(\'[data-num="d87r"] [data-numrange]\');' +
+        '  var toastEl = document.querySelector(".toast");' +
+        '  var diag = " override=" + JSON.stringify(sess.operator.d87Override) +' +
+        '    " lineR=" + (sess.line && sess.line.d87 ? sess.line.d87.r : "?") +' +
+        '    " range=" + (rangeEl ? rangeEl.value : "?") +' +
+        '    " toast=" + (toastEl ? toastEl.textContent : "none");' +
+        '  var home = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (home) home.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  return before === after ? "unchanged" + diag : "changed";' +
+        '})()'
+      );
+      if (followed !== 'changed') {
+        return fail('the 87L checks did not follow the characteristic (' + followed + ')');
+      }
+      session.operator.d87Override = null;
+      invalidate();
+      buildAll();
+      console.log('[smoke] 87L checks followed a characteristic change');
+
+      /*
+       * Each workflow page carries a second plot holding the generated points,
+       * labelled with the identifiers the report uses. An empty one reads as a
+       * rendering fault rather than the wiring mistake it would be, so both
+       * are checked against their own table and for following their sliders.
+       */
+      step('generated-point plots');
+      const plots = await mainWindow.webContents.executeJavaScript(
+        '(async function () {' +
+        '  var nav = async function (route) {' +
+        '    var link = document.querySelector(\'[data-route="\' + route + \'"]\');' +
+        '    if (!link || link.classList.contains("disabled")) return false;' +
+        '    link.click();' +
+        '    await new Promise(function (r) { setTimeout(r, 1100); });' +
+        '    return true;' +
+        '  };' +
+        '  var labels = function (id) {' +
+        '    return Array.prototype.map.call(' +
+        '      document.querySelectorAll("#" + id + " text"),' +
+        '      function (t) { return t.textContent; }).join(",").split(/[,\\s]+/)' +
+        '      .filter(function (s) { return /^[TD]\\d+$/.test(s); });' +
+        '  };' +
+        '  var places = function (id) {' +
+        '    return Array.prototype.map.call(' +
+        '      document.querySelectorAll("#" + id + " circle"),' +
+        '      function (c) { return c.getAttribute("cx") + ":" + c.getAttribute("cy"); })' +
+        '      .join(" ");' +
+        '  };' +
+        '  var tableIds = function (sel) {' +
+        '    return Array.prototype.map.call(document.querySelectorAll(sel + " tr"),' +
+        '      function (tr) {' +
+        '        var c = tr.querySelector("td");' +
+        '        return c ? (c.textContent.match(/[TD]\\d+/) || [""])[0] : "";' +
+        '      }).filter(Boolean);' +
+        '  };' +
+        '  var missing = function (want, got) {' +
+        '    return want.filter(function (x) { return got.indexOf(x) < 0; });' +
+        '  };' +
+        '  if (!(await nav("distance"))) return "distance not reachable";' +
+        '  var tIds = tableIds("#tp");' +
+        '  if (!tIds.length) return "no distance rows";' +
+        '  var gone = missing(tIds, labels("rx2"));' +
+        '  if (gone.length) return "rx2 is missing " + gone.join(" ");' +
+        '  var rxBefore = places("rx2");' +
+        '  var inBox = document.querySelector(\'[data-num="inZonePct"] [data-numrange]\');' +
+        '  if (!inBox) return "no in-zone control";' +
+        '  inBox.value = "60";' +
+        '  inBox.dispatchEvent(new Event("input", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 300); });' +
+        '  if (places("rx2") === rxBefore) return "rx2 ignored the in-zone slider";' +
+        '  if (!(await nav("differential"))) return "differential not reachable";' +
+        '  var dIds = tableIds("#dchecks");' +
+        '  if (!dIds.length) return "no 87L rows";' +
+        '  gone = missing(dIds, labels("ap2"));' +
+        '  if (gone.length) return "ap2 is missing " + gone.join(" ");' +
+        '  var apBefore = places("ap2");' +
+        '  var rBox = document.querySelector(\'[data-num="d87r"] [data-numrange]\');' +
+        '  if (!rBox) return "no 87LR control";' +
+        '  rBox.value = "9";' +
+        '  rBox.dispatchEvent(new Event("input", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 300); });' +
+        '  if (places("ap2") === apBefore) return "ap2 ignored the 87LR slider";' +
+        '  var home = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (home) home.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  return "ok " + tIds.length + " distance, " + dIds.length + " 87L";' +
+        '})()'
+      );
+      if (!/^ok /.test(plots)) {
+        return fail('the generated-point plots did not hold up (' + plots + ')');
+      }
+      console.log('[smoke] second plots carried every table row and followed their sliders (' +
+        plots.replace(/^ok /, '') + ')');
+
       step('lock round trip');
       const key = lockKeyOf(plan.distance[0]);
       const lockedPct = plan.distance[0].pctOfReach;
@@ -631,6 +605,85 @@ function runSmoke() {
       buildAll();
       console.log('[smoke] lock held at ' + lockedPct + '% while others moved, released cleanly');
 
+      /*
+       * Omit has to reach the export, and a saved report has to be able to
+       * produce its documents again from the snapshot alone.
+       */
+      step('omit and saved report round trip');
+      const fullCount = session.plan.distance.length;
+      const omitKey = session.plan.distance[0].lockKey;
+      session.omit[omitKey] = true;
+      const cut = exportBundle(null);
+      if (cut.plan.distance.length !== fullCount - 1 || cut.plan.omittedCount !== 1) {
+        return fail('an omitted point still reached the export');
+      }
+      if (cut.record.tests.length !== fullCount - 1) {
+        return fail('the record still holds the omitted point');
+      }
+      /*
+       * Omissions are silent by design. Check the parts that get rendered --
+       * the bookkeeping fields on the record are not printed anywhere.
+       */
+      const rendered = JSON.stringify([
+        cut.record.assumptions, cut.record.tests, cut.record.derived
+      ]);
+      if (/omit/i.test(rendered)) return fail('the record still refers to an omitted point');
+      // The CSV is the working file and does state it, by design.
+      const csvText = testPlanCsv({
+        plan: cut.plan, line: cut.line, names: cut.names, signoff: {}
+      });
+      if (!/Omitted from this report/.test(csvText)) {
+        return fail('the csv no longer states what was omitted');
+      }
+
+      // The report name has to reach the export, not just the screen.
+      session.reportTitle = 'Spring outage — Line 1';
+      const named = exportBundle(null);
+      if (named.title !== 'Spring outage — Line 1') return fail('the report name did not reach the export');
+      if (!/Spring_outage/.test(named.base)) {
+        return fail('the report name did not reach the file name (got ' + named.base + ')');
+      }
+      session.reportTitle = null;
+
+      const savedSmoke = store.saveReport({
+        title: 'smoke round trip',
+        names: session.names,
+        counts: cut.plan.counts,
+        omittedCount: cut.plan.omittedCount,
+        line: cut.line,
+        plan: cut.plan,
+        record: cut.record,
+        provenance: cut.provenance,
+        signoff: {}
+      });
+      // Read it back the way a download from the archive would.
+      const reloaded = exportBundle(savedSmoke.id);
+      if (reloaded.plan.distance.length !== cut.plan.distance.length) {
+        return fail('a saved report did not reload with the same test points');
+      }
+      const savedPdf = await testReportPdf({
+        plan: reloaded.plan, line: reloaded.line, names: reloaded.names, org: {}, signoff: {}
+      });
+      if (savedPdf.length < 2000) return fail('a saved report produced an empty PDF');
+      store.deleteReport(savedSmoke.id);
+      delete session.omit[omitKey];
+      invalidate();
+      buildAll();
+      console.log('[smoke] omit reached the export; saved report re-exported from its snapshot');
+
+      step('experimental deviation reporting');
+      const baseDev = experimentalDeviations().length;
+      const keepCurrent = session.operator.testCurrent;
+      session.operator.testCurrent = keepCurrent + 2.5;
+      const devs = experimentalDeviations();
+      session.operator.testCurrent = keepCurrent;
+      if (!devs.some((d) => /Test current/.test(d.label))) {
+        return fail('a changed setting was not reported as experimental');
+      }
+      if (experimentalDeviations().length !== baseDev) {
+        return fail('experimental deviations did not clear when the setting went back');
+      }
+
       step('render pdfs');
       const a = await testReportPdf({ plan, line, names: session.names, org: {}, signoff: {} });
       const b = await recordPdf({ record, line, names: session.names, org: {}, provenance: provenance() });
@@ -656,7 +709,12 @@ function runSmoke() {
       step('listener duplication check');
       await mainWindow.webContents.executeJavaScript(
         '(async function () {' +
-        '  document.querySelector(\'[data-act="demo"]\').click();' +
+        '  var home = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (home) home.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  var demo = document.querySelector(\'[data-act="demo"]\');' +
+        '  if (!demo) return "settings screen not reachable";' +
+        '  demo.click();' +
         '  await new Promise(function (r) { setTimeout(r, 600); });' +
         '  for (var i = 0; i < 4; i += 1) {' +
         '    document.querySelector(\'[data-route="system"]\').click();' +
@@ -734,7 +792,7 @@ function buildMenu() {
   ]));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   store = new Store(app.getPath('userData'));
   session.operator = Object.assign({}, DEFAULT_OPERATOR, store.getConfig().defaults);
 
@@ -744,7 +802,7 @@ app.whenReady().then(() => {
     const from = process.env['ENDER_LOAD_' + end.toUpperCase()];
     if (!from) continue;
     try {
-      loadEnd(end, from);
+      await loadEnd(end, from);
     } catch (err) {
       console.error('[load] ' + end + ': ' + err.message);
     }

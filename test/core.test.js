@@ -328,6 +328,47 @@ test('the source impedance model needs no voltage warnings', () => {
 
 test('differential checks are generated per phase', () => {
   const plan = buildPlan(demoLine());
-  assert.strictEqual(plan.counts.differential, 3 * 8);
+  assert.strictEqual(plan.counts.differential, 3 * 9);
   assert.ok(plan.differential.every((d) => ['A', 'B', 'C'].includes(d.phase)));
+});
+
+test('the pickup pair is told apart by current, not by ratio', () => {
+  const checks = alpha.standardChecks(D87, 5.0);
+  const above = checks.find((c) => c.label === 'Pickup, above threshold');
+  const below = checks.find((c) => c.label === 'Pickup, below threshold');
+
+  // Identical ratios: the alpha plane alone cannot separate these two, which
+  // is exactly why the pickup condition has to be evaluated.
+  near(above.ratio.magnitude, below.ratio.magnitude, 1e-9);
+  near(above.ratio.angle, below.ratio.angle, 1e-9);
+  assert.strictEqual(above.result.inRegion, false);
+  assert.strictEqual(below.result.inRegion, false);
+
+  assert.ok(above.result.current > D87.pickup, 'above sits over the threshold');
+  assert.ok(below.result.current < D87.pickup, 'below sits under it');
+  assert.strictEqual(above.result.expect, 'OPERATE');
+  assert.strictEqual(below.result.expect, 'RESTRAIN');
+  assert.strictEqual(below.result.heldBy, 'pickup', 'held by the threshold, not the region');
+});
+
+test('a ratio outside the region still restrains below pickup', () => {
+  const outside = C.polar(1, 0);
+  const plenty = alpha.evaluate(outside, D87.r, D87.ang, { pickup: 1, current: 5 });
+  const starved = alpha.evaluate(outside, D87.r, D87.ang, { pickup: 1, current: 0.2 });
+  assert.strictEqual(plenty.expect, 'OPERATE');
+  assert.strictEqual(starved.expect, 'RESTRAIN');
+  assert.strictEqual(starved.heldBy, 'pickup');
+});
+
+test('with no pickup setting the ratio alone decides, and says so', () => {
+  const res = alpha.evaluate(C.polar(1, 0), D87.r, D87.ang, {});
+  assert.strictEqual(res.pickupOk, null, 'not judged rather than judged as passing');
+  assert.strictEqual(res.expect, 'OPERATE');
+});
+
+test('the region still wins where both conditions fail', () => {
+  // Through current: ratio inside the region and no differential current.
+  const res = alpha.evaluate(C.polar(1, 180), D87.r, D87.ang, { pickup: 1, current: 0 });
+  assert.strictEqual(res.expect, 'RESTRAIN');
+  assert.strictEqual(res.heldBy, 'region');
 });

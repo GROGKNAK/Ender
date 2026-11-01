@@ -19,6 +19,18 @@ window.Views = window.Views || {};
     return labels.find((l) => l.code === code) || null;
   }
 
+  /*
+   * Sign-offs are stored against the test's own identity rather than its row
+   * number, so disabling a fault type cannot slide somebody's answers onto
+   * different tests. `index` reads the older position-based key.
+   */
+  function signOf(signoff, end, row, index) {
+    if (!signoff) return null;
+    const byKey = signoff[end + '|' + row.lockKey];
+    if (byKey !== undefined) return byKey;
+    return signoff[end + index];
+  }
+
   function signoffCell(key, value, labels) {
     const opts = labels.map((l) =>
       '<option' + (l.code === value ? ' selected' : '') + '>' + esc(l.code) + '</option>').join('');
@@ -50,21 +62,32 @@ window.Views = window.Views || {};
   Views.report = {
     render(st) {
       if (!st.session.ready) return '<div class="err"><b>✕</b><div>Load both settings files first.</div></div>';
-      return '<header class="page"><div><h2>Test report</h2>' +
+      return '<header class="page"><div>' +
+        '<div class="namewrap" style="margin:0 0 2px">' +
+        '<input class="nameedit" id="rtitle" value="' + esc(st.session.reportTitle || '') +
+        '" placeholder="Report name" style="font-size:19px">' +
+        '<span class="pencil">✎</span></div>' +
         '<p id="rsub">Building…</p></div>' +
         '<div class="actions"><button data-go="differential">← Back</button>' +
         '<button data-act="csv">Export CSV</button>' +
         '<button data-act="reportPdf">Export PDF</button>' +
         '<button data-act="save">Save report</button>' +
         '<button class="primary" data-go="findings">Findings →</button></div></header>' +
-        '<div id="warnbox"></div>' +
+        '<div id="warnbox"></div><div id="omitnote"></div>' +
         '<div class="card"><h3>Test matrix</h3>' +
         '<p class="sub">Every fault type at an in-zone and an out-of-zone point, per zone. ' +
         'Select a row to see the injected quantities. The two right-hand columns are sign-off, ' +
         'one per station — edit the choices in System settings.</p>' +
         '<table id="matrix"><tr><td class="spin">Computing…</td></tr></table></div>' +
         '<h3 id="dhead" style="font-size:14px;margin:18px 0 9px"></h3>' +
-        '<div class="grid2" id="dcards"></div>';
+        '<div class="grid2" id="dcards"></div>' +
+        '<div class="card" style="margin-top:14px"><h3>87L alpha plane checks</h3>' +
+        '<p class="sub">Injected current pairs for the differential element, all three phases. ' +
+        'These come from the characteristic on the Differential screen, not from the distance ' +
+        'reaches, so changing a zone reach does not move them.</p>' +
+        '<table id="dmatrix"><tr><td class="spin">Computing…</td></tr></table></div>' +
+        '<h3 id="d87head" style="font-size:14px;margin:18px 0 9px"></h3>' +
+        '<div class="grid2" id="d87cards"></div>';
     },
 
     async mount(root, st, app) {
@@ -81,10 +104,12 @@ window.Views = window.Views || {};
       const shortL = (s.names.local || 'Local').split(' ')[0];
       const shortR = (s.names.remote || 'Remote').split(' ')[0];
 
-      root.querySelector('#rsub').textContent =
+      root.querySelector('#rsub').innerHTML =
+        'Exports as <b id="rname">' + esc(s.reportTitle) + '</b> · ' +
         plan.counts.distance + ' distance points · ' + plan.counts.differential +
-        ' differential checks · ' + (s.names.local || 'Local') + ' – ' + (s.names.remote || 'Remote') +
-        (plan.lockedCount ? ' · ' + plan.lockedCount + ' locked' : '');
+        ' differential checks' +
+        (plan.lockedCount ? ' · ' + plan.lockedCount + ' locked' : '') +
+        (s.omittedCount ? ' · ' + s.omittedCount + ' omitted' : '');
 
       if (plan.lockedCount) {
         const bar = root.querySelector('.actions');
@@ -94,8 +119,40 @@ window.Views = window.Views || {};
         bar.insertBefore(b, bar.firstChild.nextSibling);
       }
 
+      if (plan.starvedCount) {
+        const sample = plan.distance.find((r) => r.heldBySupervision);
+        const failed = (sample.supervision.failed || [])[0];
+        root.querySelector('#warnbox').innerHTML +=
+          '<div class="warn"><b>⚠</b><div><b>' + plan.starvedCount + ' in-zone point' +
+          (plan.starvedCount > 1 ? 's cannot' : ' cannot') + ' operate at this test current.</b> ' +
+          'The impedance is inside the reach, but the current is below a fault detector threshold, ' +
+          'so the element is supervised out' +
+          (failed ? ' — ' + esc(failed.label) + ' ' + n(failed.got, 3) + ' A against ' +
+            esc(failed.setting) + ' = ' + n(failed.need, 3) + ' A' : '') +
+          '. Those points are marked <b>low I</b> and expect RESTRAIN. Raise the test current ' +
+          'on the Line &amp; system screen, or they prove nothing.</div></div>';
+      }
+
+      if (s.omittedCount) {
+        root.querySelector('#omitnote').innerHTML =
+          '<div class="warn"><b>⊘</b><div><b>' + s.omittedCount + ' test point' +
+          (s.omittedCount > 1 ? 's are' : ' is') + ' omitted from the exported report.</b> ' +
+          'They stay here so you can put them back. The PDF, the CSV and the calculation record ' +
+          'each state how many were left out.</div></div>';
+      }
+
+      const dev = s.experimental || [];
+      if (dev.length) {
+        root.querySelector('#warnbox').innerHTML =
+          '<div class="warn"><b>⚙</b><div><b>This report was built on experimental settings.</b> ' +
+          dev.map((d) => esc(d.label) + ': <b>' + esc(d.now) + '</b> (default ' + esc(d.was) + ')').join(' · ') +
+          '<div style="margin-top:6px;color:var(--muted)">Use <b>Clear experimental</b> on any workflow ' +
+          'screen to return to the stored defaults. Locked rows keep whatever they were locked with ' +
+          'either way, and the calculation record states it per test point.</div></div></div>';
+      }
+
       if (plan.counts.voltageWarnings) {
-        root.querySelector('#warnbox').innerHTML = '<div class="warn"><b>⚠</b><div><b>' +
+        root.querySelector('#warnbox').innerHTML += '<div class="warn"><b>⚠</b><div><b>' +
           plan.counts.voltageWarnings + ' test point' + (plan.counts.voltageWarnings > 1 ? 's need' : ' needs') +
           ' more than ' + n(s.operator.warnVolts, 0) + ' V on the faulted phase.</b> ' +
           'The bench model does not bound voltage, so it is asking for more than the system could produce. ' +
@@ -107,6 +164,10 @@ window.Views = window.Views || {};
           'fault model, a reach percentage or the 87L characteristic no longer moves it, so a line ' +
           'that has been agreed stays put while you experiment with the rest. Unlocking asks first.',
           null, false) + '</th>' +
+        '<th>' + tip('⊘', 'Omit from report',
+          'Ticked, this test point is left out of the exported PDF and CSV entirely. It stays here ' +
+          'so you can put it back. The exports and the calculation record state how many were ' +
+          'omitted, because a report holding fewer tests than were run should say so.') + '</th>' +
         '<th>#</th><th>Zone</th>' +
         '<th>' + tip('Dir', 'Zone direction',
           'Forward zones look down the line; a reverse zone looks behind the terminal, so its ' +
@@ -132,10 +193,13 @@ window.Views = window.Views || {};
           'The same record for the far end, kept separate because the two ends are often tested by different crews on different days.', null, true) + '</th></tr>';
 
       const rows = plan.distance.map((r, i) =>
-        '<tr class="pick' + (i === 0 ? ' sel' : '') + (r.locked ? ' locked' : '') + '" data-row="' + i + '">' +
+        '<tr class="pick' + (i === 0 ? ' sel' : '') + (r.locked ? ' locked' : '') +
+        (s.omit && s.omit[r.lockKey] ? ' omitted' : '') + '" data-row="' + i + '">' +
         '<td><span class="lockbtn' + (r.locked ? ' on' : '') + '" data-lock="' + esc(r.lockKey) + '" ' +
         'title="' + (r.locked ? 'Locked — click to unlock' : 'Click to lock this test point') + '">' +
         (r.locked ? '■' : '□') + '</span></td>' +
+        '<td><input type="checkbox" class="omitbox" data-omit="' + esc(r.lockKey) + '"' +
+        (s.omit && s.omit[r.lockKey] ? ' checked' : '') + ' title="Omit this test point from the exported report"></td>' +
         '<td class="num">' + esc(r.id) + '</td><td>' + esc(r.zone) + '</td>' +
         '<td>' + tag(r.reverse ? 'rev' : 'fwd', r.reverse ? 't-ex' : 't-in') +
         (r.unphysical ? ' ' + tag('!', 't-bad') : '') + '</td>' +
@@ -145,14 +209,123 @@ window.Views = window.Views || {};
         '<td class="num">' + n(abs(r.zLoop), 2) + ' ' + OHM + '</td>' +
         '<td class="num">' + n(r.linePct, 0) + '%</td>' +
         '<td>' + tag(r.onLine ? 'internal' : 'external', r.onLine ? 't-in' : 't-ex') + '</td>' +
-        '<td>' + tag(r.expect21, r.expect21 === 'OPERATE' ? 't-op' : 't-re') + '</td>' +
+        '<td>' + tag(r.expect21, r.expect21 === 'OPERATE' ? 't-op' : 't-re') +
+          (r.heldBySupervision ? ' ' + tag('low I', 't-ex') : '') + '</td>' +
         '<td>' + tag(r.expect87, r.expect87 === 'OPERATE' ? 't-op' : 't-re') + '</td>' +
         '<td>' + (r.voltageWarning ? tag('V high', 't-ex') : '') + '</td>' +
-        signoffCell('L' + i, s.signoff['L' + i] || labels[0].code, labels) +
-        signoffCell('R' + i, s.signoff['R' + i] || labels[0].code, labels) +
+        signoffCell('L|' + r.lockKey, signOf(s.signoff, 'L', r, i), labels) +
+        signoffCell('R|' + r.lockKey, signOf(s.signoff, 'R', r, i), labels) +
         '</tr>').join('');
 
       root.querySelector('#matrix').innerHTML = head + rows;
+
+      const dm = root.querySelector('#dmatrix');
+      if (!plan.differential.length) {
+        dm.innerHTML = '<tr><td class="empty">No 87L settings were found, so there is nothing ' +
+          'to check here. The distance tests above are unaffected.</td></tr>';
+      } else {
+        dm.innerHTML =
+          '<tr><th>' + tip('□', 'Lock a check',
+            'Freezes this check’s quantities so changing the characteristic no longer moves it.') + '</th>' +
+          '<th>' + tip('⊘', 'Omit from report',
+            'Leaves this check out of the exported PDF and CSV. It stays here so you can put it back.') + '</th>' +
+          '<th>#</th><th>Ph</th><th>Check</th><th>I<sub>L</sub></th><th>I<sub>R</sub></th>' +
+          '<th>Ratio</th>' +
+          '<th>' + tip('Magnitude test', 'Radius condition',
+            'The ratio has to sit between 1/87LR and 87LR for the element to restrain.') + '</th>' +
+          '<th>' + tip('Angle test', 'Angular condition',
+            'The ratio’s deviation from 180° has to be within half of 87LANG. Inside the ' +
+            'region on both counts, the element restrains.') + '</th>' +
+          '<th>' + tip('Current test', 'Pickup condition',
+            'The differential current — the vector sum of what the two ends measure — has ' +
+            'to exceed 87LPP. A ratio outside the restraint region is not enough on its own: too ' +
+            'small a current and the element has nothing to operate on.',
+            'Id = |I_L + I_R| > 87LPP', true) + '</th>' +
+          '<th>Expected</th>' +
+          '<th>' + tip(esc(shortL), 'Local sign-off',
+            'What happened at this end for this check. Same choices as the distance tests, from ' +
+            'System settings.', null, true) + '</th>' +
+          '<th>' + tip(esc(shortR), 'Remote sign-off',
+            'The same record for the far end.', null, true) + '</th></tr>' +
+          plan.differential.map((x, i) =>
+            '<tr class="pick' + (i === 0 ? ' sel' : '') + (x.locked ? ' locked' : '') +
+            (s.omit && s.omit[x.lockKey] ? ' omitted' : '') + '" data-d87row="' + i + '">' +
+            '<td><span class="lockbtn' + (x.locked ? ' on' : '') + '" data-lock="' + esc(x.lockKey) + '" ' +
+            'title="' + (x.locked ? 'Locked — click to unlock' : 'Click to lock this check') + '">' +
+            (x.locked ? '■' : '□') + '</span></td>' +
+            '<td><input type="checkbox" class="omitbox" data-omit="' + esc(x.lockKey) + '"' +
+            (s.omit && s.omit[x.lockKey] ? ' checked' : '') + '></td>' +
+            '<td class="num">' + esc(x.id) + '</td>' +
+            '<td class="' + ['pa', 'pb', 'pc'][['A', 'B', 'C'].indexOf(x.phase)] +
+              '" style="font-weight:600">' + esc(x.phase) + '</td>' +
+            '<td>' + esc(x.label) + '</td>' +
+            '<td class="num">' + n(x.local.magnitude, 2) + ' ∠' + deg2(x.local.angle) + '</td>' +
+            '<td class="num">' + n(x.remote.magnitude, 2) + ' ∠' + deg2(x.remote.angle) + '</td>' +
+            '<td class="num">' + n(x.ratio.magnitude, 3) + ' ∠' + deg2(x.ratio.angle) + '</td>' +
+            '<td class="num" style="color:var(--' + (x.result.magOk ? 'good' : 'bad') + ')">' +
+              n(x.result.inner, 3) + ' ≤ ' + n(x.result.magnitude, 3) + ' ≤ ' +
+              n(x.result.outer, 2) + (x.result.magOk ? ' ✓' : ' ✗') + '</td>' +
+            '<td class="num" style="color:var(--' + (x.result.angOk ? 'good' : 'bad') + ')">' +
+              n(x.result.deviation, 2) + '° ≤ ' + n(x.result.halfSpan, 2) + '°' +
+              (x.result.angOk ? ' ✓' : ' ✗') + '</td>' +
+            '<td class="num" style="color:var(--' +
+              (x.result.pickupOk === null ? 'dim' : (x.result.pickupOk ? 'good' : 'bad')) + ')">' +
+              (x.result.pickupOk === null ? 'no 87LPP'
+                : n(x.result.current, 2) + ' A ' + (x.result.pickupOk ? '>' : '≤') + ' ' +
+                  n(x.result.pickup, 2) + ' A ' + (x.result.pickupOk ? '✓' : '✗')) + '</td>' +
+            '<td>' + tag(x.result.expect, x.result.expect === 'OPERATE' ? 't-op' : 't-re') +
+              (x.result.heldBy === 'pickup' ? ' ' + tag('by pickup', 't-ex') : '') + '</td>' +
+            signoffCell('L|' + x.lockKey, signOf(s.signoff, 'L', x, -1), labels) +
+            signoffCell('R|' + x.lockKey, signOf(s.signoff, 'R', x, -1), labels) + '</tr>'
+          ).join('');
+
+        /*
+         * Injected quantities for a differential check. The element is
+         * current-only, so the voltages are there to keep the relay healthy
+         * during the test and take no part in its decision -- said plainly
+         * rather than left for someone to assume.
+         */
+        const vnom = (s.operator && s.operator.vnom) || 67;
+        const d87Panel = (title, meta, phase, cur) => {
+          const idx = ['A', 'B', 'C'].indexOf(phase);
+          const body = PH.map((p, k) => {
+            const carries = k === idx;
+            return '<tr><td class="' + CLS[k] + '" style="font-weight:600">' + p + '</td>' +
+              '<td class="num" style="color:var(--muted)">' + n(vnom, 2) + ' V</td>' +
+              '<td class="num" style="color:var(--muted)">' + deg([0, -120, 120][k]) + '</td>' +
+              '<td class="num"' + (carries ? '' : ' style="color:var(--dim)"') + '>' +
+                n(carries ? cur.magnitude : 0, 3) + ' A</td>' +
+              '<td class="num" style="color:var(--muted)">' +
+                (carries ? deg(cur.angle) : '—') + '</td></tr>';
+          }).join('');
+          return '<div class="card" style="margin:0"><h3>' + esc(title) + '</h3>' +
+            '<p class="sub">' + esc(meta) + '</p><table>' +
+            '<tr><th>Ph</th><th>Voltage</th><th>Angle</th><th>Current</th><th>Angle</th></tr>' +
+            body + '</table>' +
+            '<p class="why">87L is a current-only element: the voltages are applied to keep the ' +
+            'relay healthy and play no part in this decision.</p></div>';
+        };
+
+        const d87head = root.querySelector('#d87head');
+        const d87cards = root.querySelector('#d87cards');
+        function showD87(i) {
+          const x = plan.differential[i];
+          d87head.innerHTML = esc(x.id) + ' · phase ' + esc(x.phase) + ' · ' + esc(x.label) +
+            ' <span style="color:var(--muted);font-weight:400">— ' + esc(x.note) + '</span>';
+          d87cards.innerHTML =
+            d87Panel('Local — ' + (s.names.local || ''),
+              s.local.model + ' · CT ' + (s.local.ctr || '?') + ':1', x.phase, x.local) +
+            d87Panel('Remote — ' + (s.names.remote || ''),
+              s.remote.model + ' · CT ' + (s.remote.ctr || '?') + ':1', x.phase, x.remote);
+          root.querySelectorAll('[data-d87row]').forEach((tr, k) => tr.classList.toggle('sel', k === i));
+        }
+        showD87(0);
+
+        on(root, '[data-d87row]', 'click', (e, tr) => {
+          if (e.target.closest('.lockbtn') || e.target.closest('.omitbox')) return;
+          showD87(Number(tr.dataset.d87row));
+        });
+      }
 
       const dhead = root.querySelector('#dhead');
       const dcards = root.querySelector('#dcards');
@@ -169,9 +342,11 @@ window.Views = window.Views || {};
       }
       showDetail(0);
 
-      on(root, 'tr.pick', 'click', (e, tr) => {
+      // Both tables use .pick for hover; select on the data attribute so the
+      // distance handler cannot pick up a differential row.
+      on(root, 'tr[data-row]', 'click', (e, tr) => {
         if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
-        if (e.target.closest('.lockbtn')) return;
+        if (e.target.closest('.lockbtn') || e.target.closest('.omitbox')) return;
         showDetail(Number(tr.dataset.row));
       });
 
@@ -192,6 +367,30 @@ window.Views = window.Views || {};
           toast('Locked — this point no longer follows the other pages');
         }
         app.go('report');
+      }));
+
+      on(root, '#rtitle', 'change', guard(async (e, input) => {
+        const res = await window.ender.session.setReportTitle(input.value);
+        st.session = res;
+        input.value = res.reportTitleCustom ? res.reportTitle : '';
+        root.querySelector('#rname').textContent = res.reportTitle;
+        toast(res.reportTitleCustom
+          ? 'Report named “' + res.reportTitle + '”'
+          : 'Back to the station names');
+      }));
+
+      on(root, '[data-omit]', 'change', guard(async (e, box) => {
+        const res = await window.ender.session.setOmit(box.dataset.omit, box.checked);
+        st.session.omit = res.omit;
+        const tr = box.closest('tr');
+        if (tr) tr.classList.toggle('omitted', box.checked);
+        root.querySelector('#omitnote').innerHTML = res.omittedCount
+          ? '<div class="warn"><b>⊘</b><div><b>' + res.omittedCount + ' test point' +
+            (res.omittedCount > 1 ? 's are' : ' is') + ' omitted from the exported report.</b> ' +
+            'They stay here so you can put them back. The PDF, the CSV and the calculation ' +
+            'record each state how many were left out.</div></div>'
+          : '';
+        toast(box.checked ? 'Omitted from the report' : 'Back in the report');
       }));
 
       on(root, '[data-act="unlockAll"]', 'click', guard(async () => {

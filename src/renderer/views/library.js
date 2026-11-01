@@ -47,26 +47,38 @@ window.Views = window.Views || {};
           return;
         }
         root.querySelector('#list').innerHTML =
-          '<table><tr><th>Report</th><th>Saved</th><th>Line</th><th>Relays</th><th>Tests</th>' +
-          '<th>Model</th><th>Status</th><th>Size</th><th></th></tr>' +
+          '<table><tr><th>Report</th><th>Saved</th><th>Name</th><th>Relays</th><th>Tests</th>' +
+          '<th>Model</th><th>Status</th><th>Size</th><th>Download</th></tr>' +
           shown.map((r) => {
             if (r.broken) {
               return '<tr><td class="mono">' + esc(r.id) + '</td><td colspan="7">' +
                 tag('unreadable file', 't-bad') + '</td>' +
                 '<td><span class="linkbtn" data-del="' + esc(r.id) + '">Delete</span></td></tr>';
             }
-            const names = (r.names && (r.names.local || '') + ' – ' + (r.names.remote || '')) || '—';
             const relays = [r.relays && r.relays.local && r.relays.local.model,
               r.relays && r.relays.remote && r.relays.remote.model].filter(Boolean).join(' / ') || '—';
+            const flags = [
+              r.omittedCount ? tag(r.omittedCount + ' omitted', 't-ex') : '',
+              r.lockedCount ? tag(r.lockedCount + ' locked', 't-in') : ''
+            ].filter(Boolean).join(' ');
+            const downloads = r.exportable
+              ? '<span class="linkbtn" data-dl="pdf:' + esc(r.id) + '">PDF</span> ' +
+                '<span style="color:var(--line2)">·</span> ' +
+                '<span class="linkbtn" data-dl="record:' + esc(r.id) + '">Record</span> ' +
+                '<span style="color:var(--line2)">·</span> ' +
+                '<span class="linkbtn" data-dl="csv:' + esc(r.id) + '">CSV</span>'
+              : '<span style="color:var(--dim)" title="Saved before reports became self-contained">not regenerable</span>';
             return '<tr><td class="mono">' + esc(r.id) + '</td>' +
               '<td class="num">' + U.when(r.savedAt) + '</td>' +
-              '<td>' + esc(names) + '</td>' +
+              '<td><span class="rename" data-rename="' + esc(r.id) + '" title="Click to rename">' +
+                esc(r.title) + '</span></td>' +
               '<td style="color:var(--muted)">' + esc(relays) + '</td>' +
               '<td class="num">' + ((r.counts && r.counts.total) || '—') + '</td>' +
-              '<td style="color:var(--muted)">' + esc(r.model || '—') + '</td>' +
+              '<td style="color:var(--muted)">' + esc(r.model || '—') + ' ' + flags + '</td>' +
               '<td>' + tag(r.status || 'Generated', STATUS_CLS[r.status] || 't-re') + '</td>' +
               '<td class="num" style="color:var(--dim)">' + U.bytes(r.size || 0) + '</td>' +
-              '<td><span class="linkbtn" data-del="' + esc(r.id) + '">Delete</span></td></tr>';
+              '<td>' + downloads + ' <span style="color:var(--line2)">·</span> ' +
+                '<span class="linkbtn" data-del="' + esc(r.id) + '">Delete</span></td></tr>';
           }).join('') + '</table>';
       }
 
@@ -80,6 +92,27 @@ window.Views = window.Views || {};
 
       on(root, '#q', 'input', (e, input) => draw(input.value));
       on(root, '[data-act="folder"]', 'click', guard(() => window.ender.shell.openPath(usage.dir)));
+      on(root, '[data-rename]', 'click', guard(async (e, span) => {
+        const id = span.dataset.rename;
+        const current = reports.find((r) => r.id === id);
+        const next = window.prompt('Name for ' + id, (current && current.title) || id);
+        if (next === null) return;
+        if (!next.trim()) { toast('A report needs a name', true); return; }
+        await window.ender.reports.rename(id, next.trim());
+        toast('Renamed to ' + next.trim());
+        app.go('reports');
+      }));
+
+      on(root, '[data-dl]', 'click', guard(async (e, link) => {
+        const [kind, id] = link.dataset.dl.split(':');
+        const fn = { pdf: 'reportPdf', record: 'recordPdf', csv: 'csv' }[kind];
+        const target = await window.ender.exports[fn](id);
+        if (target) {
+          toast('Saved ' + target.split(/[\\/]/).pop());
+          window.ender.shell.reveal(target);
+        }
+      }));
+
       on(root, '[data-del]', 'click', guard(async (e, link) => {
         const id = link.dataset.del;
         if (!window.confirm('Delete report ' + id + '? This cannot be undone.')) return;
@@ -143,9 +176,8 @@ window.Views = window.Views || {};
         '<div class="card"><h3>Colour roles</h3>' +
         '<p class="sub">Named for what they mean rather than where they appear.</p>' + roleRows + '</div>' +
         '<div class="card"><h3>Text &amp; density</h3>' +
-        '<div class="ctl"><label>Base text size</label>' +
-        '<input type="range" id="ts" min="12" max="18" value="' + (t.textSize || 14) + '">' +
-        '<span class="val" id="tsv">' + (t.textSize || 14) + ' px</span></div>' +
+        U.numField({ key: 'textSize', label: 'Base text size', min: 11, max: 20, step: 0.5,
+          value: t.textSize || 14, unit: 'px', decimals: 1 }) +
         '<div class="ctl"><label>Row density</label><div class="seg">' +
         ['compact', 'normal', 'roomy'].map((d) =>
           '<span class="' + (t.density === d ? 'on' : '') + '" data-density="' + d + '">' +
@@ -192,13 +224,15 @@ window.Views = window.Views || {};
         toast(input.dataset.role + ' colour saved');
       }));
 
-      const ts = root.querySelector('#ts');
-      ts.addEventListener('input', () => { root.querySelector('#tsv').textContent = ts.value + ' px'; });
-      ts.addEventListener('change', guard(async () => {
-        st.theme = await window.ender.theme.set({ textSize: Number(ts.value) });
-        apply({});
-        toast('Text size saved');
-      }));
+      U.bindNum(root, 'textSize', {
+        // Preview on the live document so the size can be judged as it moves.
+        preview: (value) => document.documentElement.style.setProperty('--base', value + 'px'),
+        commit: guard(async (value) => {
+          st.theme = await window.ender.theme.set({ textSize: value });
+          apply({});
+          toast('Text size saved');
+        })
+      });
 
       on(root, '[data-density]', 'click', guard(async (e, b) => {
         st.theme = await window.ender.theme.set({ density: b.dataset.density });
