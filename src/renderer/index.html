@@ -11,6 +11,12 @@
   <nav id="nav"></nav>
   <main id="main"></main>
 
+  <!--
+    Plot geometry, shared with the PDF exporter so the picture on screen and
+    the picture in the report cannot drift apart. Pure arithmetic: it touches
+    neither node nor the DOM, which is why it is safe to load here.
+  -->
+  <script src="../core/plot.js"></script>
   <script src="util.js"></script>
   <script src="views/workflow.js"></script>
   <script src="views/report.js"></script>

@@ -495,7 +495,8 @@ handle('plan:build', () => {
 handle('plan:lock', (key) => {
   const line = requireLine();
   const live = buildPlan(line, { locks: {} });
-  const row = live.distance.find((r) => lockKeyOf(r) === key);
+  const row = live.distance.find((r) => r.lockKey === key) ||
+    live.differential.find((d) => d.lockKey === key);
   if (!row) throw new Error('No such test point: ' + key);
   session.locks[key] = {
     row,
@@ -849,6 +850,80 @@ function runSmoke() {
       invalidate();
       buildAll();
       console.log('[smoke] 87L checks followed a characteristic change');
+
+      /*
+       * Each workflow page carries a second plot holding the generated points,
+       * labelled with the identifiers the report uses. An empty one reads as a
+       * rendering fault rather than the wiring mistake it would be, so both
+       * are checked against their own table and for following their sliders.
+       */
+      step('generated-point plots');
+      const plots = await mainWindow.webContents.executeJavaScript(
+        '(async function () {' +
+        '  var nav = async function (route) {' +
+        '    var link = document.querySelector(\'[data-route="\' + route + \'"]\');' +
+        '    if (!link || link.classList.contains("disabled")) return false;' +
+        '    link.click();' +
+        '    await new Promise(function (r) { setTimeout(r, 1100); });' +
+        '    return true;' +
+        '  };' +
+        '  var labels = function (id) {' +
+        '    return Array.prototype.map.call(' +
+        '      document.querySelectorAll("#" + id + " text"),' +
+        '      function (t) { return t.textContent; }).join(",").split(/[,\\s]+/)' +
+        '      .filter(function (s) { return /^[TD]\\d+$/.test(s); });' +
+        '  };' +
+        '  var places = function (id) {' +
+        '    return Array.prototype.map.call(' +
+        '      document.querySelectorAll("#" + id + " circle"),' +
+        '      function (c) { return c.getAttribute("cx") + ":" + c.getAttribute("cy"); })' +
+        '      .join(" ");' +
+        '  };' +
+        '  var tableIds = function (sel) {' +
+        '    return Array.prototype.map.call(document.querySelectorAll(sel + " tr"),' +
+        '      function (tr) {' +
+        '        var c = tr.querySelector("td");' +
+        '        return c ? (c.textContent.match(/[TD]\\d+/) || [""])[0] : "";' +
+        '      }).filter(Boolean);' +
+        '  };' +
+        '  var missing = function (want, got) {' +
+        '    return want.filter(function (x) { return got.indexOf(x) < 0; });' +
+        '  };' +
+        '  if (!(await nav("distance"))) return "distance not reachable";' +
+        '  var tIds = tableIds("#tp");' +
+        '  if (!tIds.length) return "no distance rows";' +
+        '  var gone = missing(tIds, labels("rx2"));' +
+        '  if (gone.length) return "rx2 is missing " + gone.join(" ");' +
+        '  var rxBefore = places("rx2");' +
+        '  var inBox = document.querySelector(\'[data-num="inZonePct"] [data-numrange]\');' +
+        '  if (!inBox) return "no in-zone control";' +
+        '  inBox.value = "60";' +
+        '  inBox.dispatchEvent(new Event("input", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 300); });' +
+        '  if (places("rx2") === rxBefore) return "rx2 ignored the in-zone slider";' +
+        '  if (!(await nav("differential"))) return "differential not reachable";' +
+        '  var dIds = tableIds("#dchecks");' +
+        '  if (!dIds.length) return "no 87L rows";' +
+        '  gone = missing(dIds, labels("ap2"));' +
+        '  if (gone.length) return "ap2 is missing " + gone.join(" ");' +
+        '  var apBefore = places("ap2");' +
+        '  var rBox = document.querySelector(\'[data-num="d87r"] [data-numrange]\');' +
+        '  if (!rBox) return "no 87LR control";' +
+        '  rBox.value = "9";' +
+        '  rBox.dispatchEvent(new Event("input", { bubbles: true }));' +
+        '  await new Promise(function (r) { setTimeout(r, 300); });' +
+        '  if (places("ap2") === apBefore) return "ap2 ignored the 87LR slider";' +
+        '  var home = document.querySelector(\'[data-route="settings"]\');' +
+        '  if (home) home.click();' +
+        '  await new Promise(function (r) { setTimeout(r, 400); });' +
+        '  return "ok " + tIds.length + " distance, " + dIds.length + " 87L";' +
+        '})()'
+      );
+      if (!/^ok /.test(plots)) {
+        return fail('the generated-point plots did not hold up (' + plots + ')');
+      }
+      console.log('[smoke] second plots carried every table row and followed their sliders (' +
+        plots.replace(/^ok /, '') + ')');
 
       step('lock round trip');
       const key = lockKeyOf(plan.distance[0]);

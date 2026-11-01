@@ -12,6 +12,19 @@ const C = require('./complex');
 
 const PH = ['A', 'B', 'C'];
 
+/*
+ * Sign-offs are keyed by the test's own identity, not its position, so that
+ * turning a fault type off cannot shuffle an engineer's answers onto
+ * different tests. The numeric fallback reads reports saved before that.
+ */
+function signOf(signoff, end, row) {
+  if (!signoff) return '';
+  const byKey = signoff[end + '|' + row.lockKey];
+  if (byKey !== undefined) return byKey;
+  const legacy = signoff[end + (row.n - 1)];
+  return legacy === undefined ? '' : legacy;
+}
+
 function esc(v) {
   const s = v === null || v === undefined ? '' : String(v);
   return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -44,7 +57,7 @@ function testPlanCsv(args) {
 
   rows.push(line([
     'Test', 'Zone', 'Fault', 'Type', '% of reach', 'Z loop (ohm)', 'Z loop (deg)',
-    '% of line', '87L view', '21 expected', '87L expected', 'Voltage warning',
+    '% of line', '87L view', '21 expected', '87L expected',
     ...endColumns(local), ...endColumns(remote),
     local + ' sign-off', remote + ' sign-off'
   ]));
@@ -55,10 +68,8 @@ function testPlanCsv(args) {
       C.abs(r.zLoop).toFixed(3), C.arg(r.zLoop).toFixed(2),
       r.linePct.toFixed(1), r.onLine ? 'internal' : 'external',
       r.expect21, r.expect87,
-      r.voltageWarning ? r.voltageWarning.toFixed(1) + ' V' : '',
       ...endValues(r.local), ...endValues(r.remote),
-      (signoff && signoff['L' + (r.n - 1)]) || '',
-      (signoff && signoff['R' + (r.n - 1)]) || ''
+      signOf(signoff, 'L', r), signOf(signoff, 'R', r)
     ]));
   }
 
@@ -67,7 +78,9 @@ function testPlanCsv(args) {
     rows.push(line(['87L alpha plane checks']));
     rows.push(line([
       'Test', 'Phase', 'Check', 'IL (A)', 'IL (deg)', 'IR (A)', 'IR (deg)',
-      'Ratio', 'Ratio (deg)', 'Deviation from 180 (deg)', 'Expected'
+      'Ratio', 'Ratio (deg)', 'Deviation from 180 (deg)',
+      'Id (A)', '87LPP (A)', 'Expected',
+      local + ' sign-off', remote + ' sign-off'
     ]));
     for (const d of plan.differential) {
       rows.push(line([
@@ -75,7 +88,11 @@ function testPlanCsv(args) {
         d.local.magnitude.toFixed(3), d.local.angle.toFixed(1),
         d.remote.magnitude.toFixed(3), d.remote.angle.toFixed(1),
         d.ratio.magnitude.toFixed(4), d.ratio.angle.toFixed(2),
-        d.result.deviation.toFixed(2), d.result.expect
+        d.result.deviation.toFixed(2),
+        d.result.current === null ? '' : d.result.current.toFixed(3),
+        d.result.pickup === null ? '' : d.result.pickup.toFixed(3),
+        d.result.expect + (d.result.heldBy === 'pickup' ? ' (held by pickup)' : ''),
+        signOf(signoff, 'L', d), signOf(signoff, 'R', d)
       ]));
     }
   }

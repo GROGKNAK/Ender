@@ -64,11 +64,26 @@ function isEnabled(raw) {
   return !/^(n|no|off|0|none|disabled)$/i.test(s);
 }
 
+/*
+ * Each distance zone is supervised by fault detectors: the element will not
+ * operate unless enough current is flowing, however good the impedance looks.
+ *
+ *   50PPn  phase-to-phase current, for phase and three-phase loops
+ *   50Ln   positive-sequence current, for every loop
+ *   50GZn  residual current (3I0), for ground loops
+ *
+ * Without these a test point can be inside the reach and still not operate,
+ * which is the same trap 87LPP sets for the differential.
+ */
 const ZONE_ALIASES = [
-  { n: 1, phase: ['Z1P', 'Z1PP', 'Z1MP'], ground: ['Z1MG', 'Z1G', 'Z1GP'], delay: ['Z1D', 'Z1PD', 'Z1GD'], dir: ['DIR1'] },
-  { n: 2, phase: ['Z2P', 'Z2PP', 'Z2MP'], ground: ['Z2MG', 'Z2G', 'Z2GP'], delay: ['Z2D', 'Z2PD', 'Z2GD'], dir: ['DIR2'] },
-  { n: 3, phase: ['Z3P', 'Z3PP', 'Z3MP'], ground: ['Z3MG', 'Z3G', 'Z3GP'], delay: ['Z3D', 'Z3PD', 'Z3GD'], dir: ['DIR3'] },
-  { n: 4, phase: ['Z4P', 'Z4PP', 'Z4MP'], ground: ['Z4MG', 'Z4G', 'Z4GP'], delay: ['Z4D', 'Z4PD', 'Z4GD'], dir: ['DIR4'] }
+  { n: 1, phase: ['Z1P', 'Z1PP', 'Z1MP'], ground: ['Z1MG', 'Z1G', 'Z1GP'], delay: ['Z1D', 'Z1PD', 'Z1GD'], dir: ['DIR1'],
+    supPhase: ['50PP1', '50PP'], supPos: ['50L1', '50L'], supGround: ['50GZ1', '50G1', '50GZ'] },
+  { n: 2, phase: ['Z2P', 'Z2PP', 'Z2MP'], ground: ['Z2MG', 'Z2G', 'Z2GP'], delay: ['Z2D', 'Z2PD', 'Z2GD'], dir: ['DIR2'],
+    supPhase: ['50PP2'], supPos: ['50L2'], supGround: ['50GZ2', '50G2'] },
+  { n: 3, phase: ['Z3P', 'Z3PP', 'Z3MP'], ground: ['Z3MG', 'Z3G', 'Z3GP'], delay: ['Z3D', 'Z3PD', 'Z3GD'], dir: ['DIR3'],
+    supPhase: ['50PP3'], supPos: ['50L3'], supGround: ['50GZ3', '50G3'] },
+  { n: 4, phase: ['Z4P', 'Z4PP', 'Z4MP'], ground: ['Z4MG', 'Z4G', 'Z4GP'], delay: ['Z4D', 'Z4PD', 'Z4GD'], dir: ['DIR4'],
+    supPhase: ['50PP4'], supPos: ['50L4'], supGround: ['50GZ4', '50G4'] }
 ];
 
 /*
@@ -154,6 +169,9 @@ function buildRelay(parsed, opts = {}) {
     const ground = resolveNumber(parsed, z.ground, used, 'Zone ' + z.n + ' ground reach');
     const delay = resolveNumber(parsed, z.delay, used, 'Zone ' + z.n + ' time delay');
     const dirHit = resolve(parsed, z.dir, used, 'Zone ' + z.n + ' direction');
+    const supPhase = resolveNumber(parsed, z.supPhase, used, 'Zone ' + z.n + ' phase current supervision');
+    const supPos = resolveNumber(parsed, z.supPos, used, 'Zone ' + z.n + ' positive-sequence supervision');
+    const supGround = resolveNumber(parsed, z.supGround, used, 'Zone ' + z.n + ' residual current supervision');
     const direction = dirHit ? readDirection(dirHit.raw) : null;
     if (!phase && !ground) continue;
     zones.push({
@@ -165,6 +183,14 @@ function buildRelay(parsed, opts = {}) {
       groundFrom: ground ? ground.from : null,
       delay: delay ? delay.value : null,
       delayFrom: delay ? delay.from : null,
+      supervision: {
+        phase: supPhase ? supPhase.value : null,
+        phaseFrom: supPhase ? supPhase.from : null,
+        positive: supPos ? supPos.value : null,
+        positiveFrom: supPos ? supPos.from : null,
+        ground: supGround ? supGround.value : null,
+        groundFrom: supGround ? supGround.from : null
+      },
       direction: direction || 'forward',
       directionFrom: direction ? dirHit.from : null,
       directionRaw: dirHit ? dirHit.raw : null,

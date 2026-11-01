@@ -110,6 +110,7 @@ function buildLine(local, remote, op = {}) {
       reachFrom: z.phase !== null ? z.phaseFrom : z.groundFrom,
       ground: z.ground,
       delay: z.delay,
+      supervision: z.supervision || { phase: null, positive: null, ground: null },
       direction,
       // Where the direction came from, so the UI and the record can say
       // whether it was read, assumed, or set by hand.

@@ -89,7 +89,8 @@ test('csv has one row per test and matching column counts', () => {
   const csv = testPlanCsv({ plan, line, names: { local: 'ALPHA', remote: 'BRAVO' } });
   const lines = csv.replace(/^﻿/, '').trim().split('\r\n');
   const header = lines[0].split(',');
-  assert.strictEqual(header.length, 12 + 12 + 12 + 2);
+  // 11 describing the test, 12 phase quantities per end, 2 sign-offs.
+  assert.strictEqual(header.length, 11 + 12 + 12 + 2);
   const body = lines.slice(1, 1 + plan.distance.length);
   assert.strictEqual(body.length, plan.distance.length);
   for (const row of body) assert.strictEqual(row.split(',').length, header.length);
@@ -151,4 +152,102 @@ test('pdf export survives unicode in operator-supplied names', async () => {
     org: {}
   });
   assert.ok(bytes.length > 2000);
+});
+
+/* ------------------------------------------------------- what the report says */
+
+/*
+ * pdf-lib writes drawn text as hex strings in deflated content streams, so
+ * reading a report back means inflating every stream and decoding the
+ * <...> Tj operands. Worth the twenty lines: the rule that the report states
+ * only what was tested is a decision the user made twice, and asserting it
+ * on the real bytes is the only way it stays true.
+ */
+function pdfText(bytes) {
+  const zlib = require('node:zlib');
+  const buf = Buffer.from(bytes);
+  const latin = buf.toString('latin1');
+  let body = '';
+  const re = /stream\r?\n/g;
+  let m;
+  while ((m = re.exec(latin))) {
+    const from = m.index + m[0].length;
+    const to = latin.indexOf('endstream', from);
+    try { body += zlib.inflateSync(buf.subarray(from, to)).toString('latin1'); } catch (err) { /* not deflated */ }
+  }
+  return [...body.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)]
+    .map((x) => Buffer.from(x[1], 'hex').toString('latin1'))
+    .join('\n');
+}
+
+test('the report prints nothing about omitted points or bench warnings', async () => {
+  const { line, plan } = fixture({ warnVolts: 40, testCurrent: 8 });
+  assert.ok(plan.counts.voltageWarnings > 0, 'the fixture should trip the voltage warning');
+
+  const { applyOmissions } = require('../src/core/testplan');
+  const dropped = plan.distance[1];
+  const cut = applyOmissions(plan, { [dropped.lockKey]: true });
+  assert.strictEqual(cut.omittedCount, 1);
+
+  const text = pdfText(await testReportPdf({
+    plan: cut, line, names: { local: 'ALPHA', remote: 'BRAVO' }, org: {}, signoff: {}
+  }));
+
+  // It is a real report: the surviving points are all in it.
+  assert.ok(text.includes('Test matrix'));
+  for (const r of cut.distance) assert.ok(text.includes(r.id), r.id + ' is missing from the report');
+
+  // And it says nothing about what was left out or what the bench must manage.
+  assert.ok(!text.includes(dropped.id), 'the omitted point is named in the report');
+  assert.ok(!/[Oo]mitted/.test(text), 'the report mentions omission');
+  assert.ok(!/faulted phase/.test(text), 'the report still carries a voltage warning');
+  assert.ok(!/require more than/.test(text), 'the report still carries the warning summary');
+});
+
+test('the calculation record keeps the warnings the report drops', async () => {
+  const { line, plan, a, b } = fixture({ warnVolts: 40, testCurrent: 8 });
+  const rec = buildRecord({ line, plan, local: a, remote: b });
+  const text = pdfText(await recordPdf({ record: rec, line, names: { local: 'ALPHA', remote: 'BRAVO' }, org: {} }));
+  /*
+   * Match the warning itself, not the phrase "faulted phase" -- every
+   * injection block carries a note saying voltage is referenced to the
+   * faulted phase at 0 degrees, so the looser pattern passed whether or not
+   * the warning was there at all.
+   */
+  const warnings = (text.match(/This point needs [\d.]+ V on the faulted phase/g) || []);
+  assert.strictEqual(warnings.length, plan.counts.voltageWarnings,
+    'the record exists to show the working, so one note per flagged point belongs in it');
+});
+
+test('the report carries both plots', async () => {
+  const { line, plan } = fixture();
+  const text = pdfText(await testReportPdf({
+    plan, line, names: { local: 'ALPHA', remote: 'BRAVO' }, org: {}, signoff: {}
+  }));
+  assert.ok(/R-X plane/.test(text), 'no distance plot caption');
+  assert.ok(/alpha plane/.test(text), 'no 87L plot caption');
+  // The identifiers are drawn on the plots as well as in the tables.
+  assert.ok((text.match(new RegExp(plan.distance[0].id, 'g')) || []).length >= 2,
+    'the first test point should appear in both the table and the plot');
+});
+
+test('neither export carries a voltage warning', async () => {
+  /*
+   * The warning is a setup aid, not a result, so it belongs on screen and in
+   * the calculation record and nowhere else. This is pinned because the CSV
+   * has quietly regained a removed line once before.
+   */
+  const { line, plan } = fixture({ warnVolts: 40, testCurrent: 8 });
+  assert.ok(plan.counts.voltageWarnings > 0, 'the fixture should trip the warning');
+
+  const csv = testPlanCsv({ plan, line, names: { local: 'ALPHA', remote: 'BRAVO' } });
+  assert.ok(!/[Vv]oltage warning/.test(csv), 'the csv still has the warning column');
+  // The flagged point is still exported -- it is the note that is gone, not the test.
+  const flagged = plan.distance.find((r) => r.voltageWarning);
+  assert.ok(csv.includes(flagged.id), flagged.id + ' is missing from the csv');
+
+  const text = pdfText(await testReportPdf({
+    plan, line, names: { local: 'ALPHA', remote: 'BRAVO' }, org: {}, signoff: {}
+  }));
+  assert.ok(!/faulted phase/.test(text), 'the report still has the warning');
 });

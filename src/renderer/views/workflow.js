@@ -14,6 +14,9 @@ window.Views = window.Views || {};
   const { esc, n, deg2, abs, arg, polar, OHM, tip, tag, toast, guard, on } = U;
   const NS = 'http://www.w3.org/2000/svg';
 
+  // Shared with the PDF exporter: see the note on the script tag in index.html.
+  const Plot = window.EnderPlot;
+
   const el = (name, attrs) => {
     const e = document.createElementNS(NS, name);
     for (const k in attrs) e.setAttribute(k, attrs[k]);
@@ -343,86 +346,55 @@ window.Views = window.Views || {};
 
   /* ------------------------------------------------------ 3. distance --- */
 
-  function drawRX(svg, line, inPct, outPct) {
+  /*
+   * Painting is all this layer does now. Where the dots and the characteristic
+   * actually go is worked out in core/plot.js, which the PDF exporter uses as
+   * well, so the plot an engineer approves on screen is the plot that ends up
+   * in the signed record.
+   */
+  const PALETTE = {
+    grid: '#222a35', axis: '#4a5566', line100: '#e6e9ef', anchor: '#8b95a5',
+    region: '#8b95a5', live: '#d29922',
+    good: '#3fb950', bad: '#f85149', mixed: '#d29922',
+    zone0: '#4f9dff', zone1: '#a371f7', zone2: '#8b95a5', zone3: '#39c5cf'
+  };
+  const ink = (role) => PALETTE[role] || role || '#8b95a5';
+
+  function paint(svg, plot) {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
-    const zones = line.zones;
-    if (!zones.length) return;
+    svg.setAttribute('width', plot.width);
+    svg.setAttribute('height', plot.height);
 
-    const zang = line.z1ang;
-
-    /*
-     * A reverse zone sits below the origin, so the frame has to make room on
-     * both sides of it. With only forward zones this is the same picture as
-     * before; with a reverse zone the origin moves up to fit it in.
-     */
-    const fwd = zones.filter((z) => z.direction !== 'reverse').map((z) => z.reach);
-    const rev = zones.filter((z) => z.direction === 'reverse').map((z) => z.reach);
-    const forwardMax = Math.max(abs(line.z1), ...(fwd.length ? fwd : [0]));
-    const reverseMax = rev.length ? Math.max(...rev) : 0;
-
-    const top = forwardMax * 1.25;
-    const bottom = Math.max(reverseMax * 1.3, forwardMax * 0.18);
-    const half = Math.max(forwardMax, reverseMax) * 1.15;
-    const S = Math.min(380 / (half * 2), 430 / (top + bottom));
-    const cx = 196;
-    const cy = 6 + top * S;
-    const px = (r) => cx + r * S;
-    const py = (x) => cy - x * S;
-    const span = half;
-
-    // Trim the canvas to what is actually drawn, so a line with only short
-    // forward zones does not leave half the card empty.
-    svg.setAttribute('height', Math.ceil((top + bottom) * S) + 14);
-
-    for (let g = -span; g <= span; g += Math.max(2, Math.round(span / 5))) {
-      svg.appendChild(el('line', { x1: px(g), y1: py(top), x2: px(g), y2: py(-bottom), stroke: '#222a35', 'stroke-width': 1 }));
-      svg.appendChild(el('line', { x1: px(-span), y1: py(g), x2: px(span), y2: py(g), stroke: '#222a35', 'stroke-width': 1 }));
-    }
-    svg.appendChild(el('line', { x1: px(-span), y1: py(0), x2: px(span), y2: py(0), stroke: '#4a5566', 'stroke-width': 1.4 }));
-    svg.appendChild(el('line', { x1: px(0), y1: py(top), x2: px(0), y2: py(-bottom), stroke: '#4a5566', 'stroke-width': 1.4 }));
-
-    const cols = ['#4f9dff', '#a371f7', '#8b95a5', '#39c5cf'];
-    for (let i = zones.length - 1; i >= 0; i -= 1) {
-      const z = zones[i];
-      const sign = z.direction === 'reverse' ? -1 : 1;
-      const rad = z.reach / 2;
-      const zx = sign * rad * Math.cos(zang * Math.PI / 180);
-      const zy = sign * rad * Math.sin(zang * Math.PI / 180);
-      svg.appendChild(el('circle', {
-        cx: px(zx), cy: py(zy), r: rad * S, fill: 'none',
-        stroke: cols[i % cols.length], 'stroke-width': 1.6, opacity: 0.85,
-        'stroke-dasharray': sign < 0 ? '5 3' : ''
-      }));
-      const lab = el('text', {
-        x: px(zx - rad) + 6, y: py(zy) + (sign < 0 ? 13 : -5),
-        fill: cols[i % cols.length], 'font-size': 10.5
-      });
-      lab.textContent = z.name + (sign < 0 ? ' (rev)' : '');
-      svg.appendChild(lab);
-    }
-
-    const lx = abs(line.z1) * Math.cos(zang * Math.PI / 180);
-    const ly = abs(line.z1) * Math.sin(zang * Math.PI / 180);
-    svg.appendChild(el('line', {
-      x1: px(0), y1: py(0), x2: px(lx), y2: py(ly),
-      stroke: '#e6e9ef', 'stroke-width': 1.8, 'stroke-dasharray': '4 3'
-    }));
-    const lt = el('text', { x: px(lx) + 8, y: py(ly), fill: '#e6e9ef', 'font-size': 10.5 });
-    lt.textContent = 'Line 100%';
-    svg.appendChild(lt);
-
-    for (const z of zones) {
-      const sign = z.direction === 'reverse' ? -1 : 1;
-      for (const [pct, colour] of [[inPct, '#3fb950'], [outPct, '#f85149']]) {
-        const r = sign * z.reach * pct / 100;
-        svg.appendChild(el('circle', {
-          cx: px(r * Math.cos(zang * Math.PI / 180)),
-          cy: py(r * Math.sin(zang * Math.PI / 180)),
-          r: 4.5, fill: colour, stroke: '#12151a', 'stroke-width': 1.5
+    for (const it of plot.items) {
+      if (it.t === 'line') {
+        const a = { x1: it.x1, y1: it.y1, x2: it.x2, y2: it.y2, stroke: ink(it.role), 'stroke-width': it.w };
+        if (it.dash) a['stroke-dasharray'] = it.dash.join(' ');
+        if (it.fade) a.opacity = 0.55;
+        svg.appendChild(el('line', a));
+      } else if (it.t === 'circle') {
+        const a = { cx: it.cx, cy: it.cy, r: it.r, fill: 'none', stroke: ink(it.role), 'stroke-width': it.w };
+        if (it.dash) a['stroke-dasharray'] = it.dash.join(' ');
+        if (it.opacity) a.opacity = it.opacity;
+        svg.appendChild(el('circle', a));
+      } else if (it.t === 'dot') {
+        const a = { cx: it.cx, cy: it.cy, r: it.r, fill: ink(it.role) };
+        if (it.w) { a.stroke = '#12151a'; a['stroke-width'] = it.w; }
+        svg.appendChild(el('circle', a));
+      } else if (it.t === 'path') {
+        svg.appendChild(el('path', {
+          d: 'M ' + it.pts.map((q) => q[0] + ' ' + q[1]).join(' L ') + (it.closed ? ' Z' : ''),
+          fill: it.role === 'region' ? 'rgba(139,149,165,0.16)' : 'none',
+          stroke: ink(it.role), 'stroke-width': it.w
         }));
+      } else if (it.t === 'text') {
+        const t = el('text', { x: it.x, y: it.y, fill: ink(it.role), 'font-size': it.size });
+        t.textContent = it.s === '-1' ? '−' + '1' : it.s;
+        svg.appendChild(t);
       }
     }
   }
+
+  const rxModel = (line) => ({ zones: line.zones, z1mag: abs(line.z1), z1ang: arg(line.z1) });
 
   Views.distance = {
     render(st) {
@@ -435,6 +407,7 @@ window.Views = window.Views || {};
         '<button data-act="clearExp">Clear experimental</button>' +
         '<button class="primary" data-go="differential">Continue →</button></div></header>' +
         '<div style="display:grid;grid-template-columns:420px 1fr;gap:14px;align-items:start">' +
+        '<div>' +
         '<div class="card" style="margin:0"><h3>R–X plane</h3>' +
         '<p class="sub">Mho characteristic, local end</p>' +
         '<svg id="rx" width="392" height="440"></svg>' +
@@ -443,6 +416,16 @@ window.Views = window.Views || {};
         '<span><i style="background:#8b95a5"></i>Zone 3</span>' +
         '<span><i style="background:#3fb950"></i>In zone</span>' +
         '<span><i style="background:#f85149"></i>Out of zone</span></div></div>' +
+
+        '<div class="card" style="margin:14px 0 0"><h3>Generated test points</h3>' +
+        '<p class="sub">Every row from the table, plotted where the relay sees it and labelled ' +
+        'with the number the report uses. Moves with the sliders.</p>' +
+        '<svg id="rx2" width="392" height="440"></svg>' +
+        '<div class="legend"><span><i style="background:#3fb950"></i>Expected OPERATE</span>' +
+        '<span><i style="background:#f85149"></i>Expected RESTRAIN</span>' +
+        '<span><i style="background:#d29922"></i>Both on one spot</span>' +
+        '<span style="color:var(--dim)">labels are report numbers</span></div></div>' +
+        '</div>' +
         '<div><div class="card"><h3>Test point placement</h3>' +
         '<p class="sub">Defaults follow common practice: 85% in, 110% out.</p>' +
         U.numField({
@@ -496,6 +479,7 @@ window.Views = window.Views || {};
     mount(root, st, app) {
       const line = st.session.line;
       const svg = root.querySelector('#rx');
+      const svg2 = root.querySelector('#rx2');
       const table = root.querySelector('#tp');
       const read = (k) => Number(root.querySelector('[data-num="' + k + '"] [data-numrange]').value);
 
@@ -509,12 +493,13 @@ window.Views = window.Views || {};
        * is exactly the confusion this is meant to remove.
        */
       let rows = null;
+      const model = rxModel(line);
 
       function redraw() {
         const inP = read('inZonePct');
         const outP = read('outZonePct');
-        drawRX(svg, line, inP, outP);
-        if (!rows) return;
+        paint(svg, Plot.rx(model, { inPct: inP, outPct: outP }));
+        if (!rows) { paint(svg2, Plot.rx(model, { chrome: false })); return; }
 
         const live = [];
         let moved = 0;
@@ -529,6 +514,20 @@ window.Views = window.Views || {};
             linePct: (mag / abs(line.z1)) * 100
           }));
         }
+
+        /*
+         * The second plot carries the same rows as the table, so a dot and a
+         * row are the same test. Locked rows are plotted where they actually
+         * stand, which makes a locked point visibly hold still while the
+         * sliders move everything else.
+         *
+         * The expected verdict is taken from the generated row and is not
+         * recomputed here. It cannot go stale: the in-zone slider stops at
+         * 99.5% and the out-of-zone one starts at 100.5%, so no amount of
+         * dragging moves a point across its own zone boundary. Generating
+         * the report is what re-derives these.
+         */
+        paint(svg2, Plot.rx(model, { chrome: false, points: Plot.distancePoints(live) }));
 
         const lockedCount = rows.filter((r) => r.locked).length;
         root.querySelector('#tpsub').innerHTML =
@@ -604,51 +603,6 @@ window.Views = window.Views || {};
 
   /* -------------------------------------------------- 4. differential --- */
 
-  function drawAlpha(svg, r, angle, live) {
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-    const dom = Math.max(7, r * 1.2);
-    const S = 196 / dom;
-    const cx = 210;
-    const cy = 210;
-    const P = (mag, a) => [cx + mag * Math.cos(a * Math.PI / 180) * S, cy - mag * Math.sin(a * Math.PI / 180) * S];
-
-    const step = Math.max(1, Math.round(dom / 4));
-    for (let k = -dom; k <= dom; k += step) {
-      svg.appendChild(el('line', { x1: cx + k * S, y1: cy - dom * S, x2: cx + k * S, y2: cy + dom * S, stroke: '#222a35', 'stroke-width': 1 }));
-      svg.appendChild(el('line', { x1: cx - dom * S, y1: cy - k * S, x2: cx + dom * S, y2: cy - k * S, stroke: '#222a35', 'stroke-width': 1 }));
-    }
-    svg.appendChild(el('line', { x1: cx - dom * S, y1: cy, x2: cx + dom * S, y2: cy, stroke: '#4a5566', 'stroke-width': 1.4 }));
-    svg.appendChild(el('line', { x1: cx, y1: cy - dom * S, x2: cx, y2: cy + dom * S, stroke: '#4a5566', 'stroke-width': 1.4 }));
-
-    const a1 = 180 - angle / 2;
-    const a2 = 180 + angle / 2;
-    const big = angle > 180 ? 1 : 0;
-    const o1 = P(r, a1);
-    const o2 = P(r, a2);
-    const i2 = P(1 / r, a2);
-    const i1 = P(1 / r, a1);
-    svg.appendChild(el('path', {
-      d: 'M ' + o1[0] + ' ' + o1[1] +
-         ' A ' + r * S + ' ' + r * S + ' 0 ' + big + ' 0 ' + o2[0] + ' ' + o2[1] +
-         ' L ' + i2[0] + ' ' + i2[1] +
-         ' A ' + (1 / r) * S + ' ' + (1 / r) * S + ' 0 ' + big + ' 1 ' + i1[0] + ' ' + i1[1] + ' Z',
-      fill: 'rgba(139,149,165,0.16)', stroke: '#8b95a5', 'stroke-width': 1.5
-    }));
-
-    const anchor = P(1, 180);
-    svg.appendChild(el('circle', { cx: anchor[0], cy: anchor[1], r: 3, fill: '#8b95a5' }));
-    const at = el('text', { x: anchor[0] - 4, y: anchor[1] + 17, fill: '#8b95a5', 'font-size': 10 });
-    at.textContent = '−1';
-    svg.appendChild(at);
-
-    if (live) {
-      const p = P(live.magnitude, live.angle);
-      svg.appendChild(el('circle', { cx: p[0], cy: p[1], r: 7, fill: 'none', stroke: '#d29922', 'stroke-width': 2 }));
-      svg.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3, fill: '#d29922' }));
-    }
-    return { P, svg };
-  }
-
   Views.differential = {
     render(st) {
       const s = st.session;
@@ -667,12 +621,28 @@ window.Views = window.Views || {};
         '<button data-act="clearExp">Clear experimental</button>' +
         '<button class="primary" data-go="report">Continue →</button></div></header>' +
         '<div style="display:grid;grid-template-columns:460px 1fr;gap:14px;align-items:start">' +
+        '<div>' +
         '<div class="card" style="margin:0"><h3>Alpha plane — I<sub>R</sub> / I<sub>L</sub></h3>' +
         '<p class="sub">Restraint region from ' + esc(d.rFrom || '87LR') + ' = ' + n(d.r, 2) +
         ' and ' + esc(d.angFrom || '87LANG') + ' = ' + n(d.ang, 1) + '°</p>' +
         '<svg id="ap" width="420" height="420"></svg>' +
         '<div class="legend"><span><i style="background:#8b95a5"></i>Restraint region</span>' +
         '<span><i style="background:#d29922"></i>Live point</span></div></div>' +
+
+        '<div class="card" style="margin:14px 0 0"><h3>Generated checks on the plane</h3>' +
+        '<p class="sub">Every check from the table below, plotted against the characteristic. ' +
+        'The region follows the sliders as you move them; the points themselves move when the ' +
+        'change is applied, since they are derived from the settings.</p>' +
+        '<svg id="ap2" width="420" height="420"></svg>' +
+        '<div class="legend"><span><i style="background:#8b95a5"></i>Restraint region</span>' +
+        '<span><i style="background:#3fb950"></i>Expected OPERATE</span>' +
+        '<span><i style="background:#f85149"></i>Expected RESTRAIN</span>' +
+        '<span><i style="background:#d29922"></i>Both on one spot</span>' +
+        '<span style="color:var(--dim)">labels are the check numbers</span></div>' +
+        '<p class="why">The pickup pair lands on one dot: both checks use the same ratio and ' +
+        'differ only in how much current is flowing, which the plane does not show. That dot is ' +
+        'amber because one of the two operates and the other does not.</p></div>' +
+        '</div>' +
         '<div><div class="card"><h3>Characteristic' +
         (d.overridden ? ' ' + tag('experimental', 't-ex') : '') + '</h3>' +
         '<p class="sub">Read from the relay. Change them to explore what a different setting would ' +
@@ -725,8 +695,18 @@ window.Views = window.Views || {};
       const d = st.session.line.d87;
       if (!d) return;
       const svg = root.querySelector('#ap');
+      const svg2 = root.querySelector('#ap2');
       const verdict = root.querySelector('#verdict');
       const why = root.querySelector('#why');
+
+      /*
+       * The generated checks, kept so the second plot can be redrawn against
+       * a moving characteristic without rebuilding the plan on every frame.
+       * Null until the first build returns.
+       */
+      let checks = null;
+
+      const checkPoints = () => (checks ? Plot.differentialPoints(checks) : null);
 
       const valueOf = (key, fallback) => {
         const el = root.querySelector('[data-num="' + key + '"] [data-numrange]');
@@ -751,7 +731,14 @@ window.Views = window.Views || {};
         const m = valueOf('ratioMag', 1);
         const a = valueOf('ratioAng', 180);
         const c = cur();
-        drawAlpha(svg, c.r, c.ang, { magnitude: m, angle: a });
+        paint(svg, Plot.alpha(c, { live: { magnitude: m, angle: a } }));
+        /*
+         * Same characteristic, so dragging 87LR or 87LANG moves the region
+         * under the generated points immediately. The points themselves are
+         * computed from those settings by the core, so they catch up when the
+         * change is committed and the checks are rebuilt.
+         */
+        paint(svg2, Plot.alpha(c, { chrome: false, points: checkPoints() }));
         const r = evaluate(m, a);
         /*
          * Update the element in place. Assigning outerHTML replaces the node,
@@ -805,15 +792,27 @@ window.Views = window.Views || {};
        * the table showing ratios from the old 87LR the moment anything moved.
        */
       function drawChecks(plan) {
-        const rows = plan.differential.filter((x) => x.phase === 'A').map((x) =>
+        checks = plan.differential.filter((x) => x.phase === 'A');
+        const rows = checks.map((x) =>
           '<tr><td class="num">' + esc(x.id) + '</td><td>' + esc(x.label) + '</td>' +
           '<td class="num">' + n(x.local.magnitude, 2) + ' ∠' + deg2(x.local.angle) + '</td>' +
           '<td class="num">' + n(x.remote.magnitude, 2) + ' ∠' + deg2(x.remote.angle) + '</td>' +
           '<td class="num">' + n(x.ratio.magnitude, 3) + ' ∠' + deg2(x.ratio.angle) + '</td>' +
-          '<td>' + tag(x.result.expect, x.result.expect === 'OPERATE' ? 't-op' : 't-re') + '</td></tr>').join('');
+          '<td class="num" style="color:var(--' +
+            (x.result.pickupOk === null ? 'dim' : (x.result.pickupOk ? 'good' : 'bad')) + ')">' +
+            (x.result.pickupOk === null ? '—' : n(x.result.current, 2) + ' A') + '</td>' +
+          '<td>' + tag(x.result.expect, x.result.expect === 'OPERATE' ? 't-op' : 't-re') +
+            (x.result.heldBy === 'pickup' ? ' ' + tag('by pickup', 't-ex') : '') + '</td></tr>').join('');
         root.querySelector('#dchecks').innerHTML =
           '<tr><th>#</th><th>Check</th><th>I<sub>L</sub></th><th>I<sub>R</sub></th><th>Ratio</th>' +
+          '<th>' + tip('I<sub>d</sub>', 'Differential current',
+            'The vector sum of the two end currents, compared against 87LPP. The element needs ' +
+            'this above pickup as well as a ratio outside the restraint region.',
+            'Id = |I_L + I_R|') + '</th>' +
           '<th>Expected</th></tr>' + rows;
+
+        // The point set just changed, so the plot showing it has to follow.
+        redraw();
       }
 
       async function refreshChecks() {
