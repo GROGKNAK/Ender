@@ -79,7 +79,9 @@ test('an operator override beats the relay, in both directions', () => {
 test('a zone switched off produces no test points', () => {
   const on = buildPlan(lineOf(row('1', 'DIR3', 'R')));
   const off = buildPlan(lineOf(row('1', 'DIR3', 'N')));
-  assert.strictEqual(on.distance.filter((r) => r.zoneNo === 3).length, 6);
+  // Every fault loop, at both points, for that one zone.
+  const { DEFAULT_TYPES } = require('../src/core/testplan');
+  assert.strictEqual(on.distance.filter((r) => r.zoneNo === 3).length, DEFAULT_TYPES.length * 2);
   assert.strictEqual(off.distance.filter((r) => r.zoneNo === 3).length, 0);
 });
 

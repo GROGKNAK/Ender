@@ -39,7 +39,12 @@ const asPoints = (rows) => Plot.distancePoints(rows.map((r) => ({
   id: r.id, zMag: C.abs(r.zLoop), reverse: r.reverse, expect21: r.expect21
 })));
 
-const labelsOf = (points) => points.flatMap((p) => p.label.split(', '));
+/*
+ * Every identifier on every dot. Read from `labels` rather than from `label`,
+ * which is the drawn text and gets shortened to "T01, T03, T05 +4" once more
+ * than a few rows land on one spot.
+ */
+const labelsOf = (points) => points.flatMap((p) => p.labels);
 
 /* ------------------------------------------------------------- omission --- */
 
@@ -105,7 +110,7 @@ test('points carry the verdict the table shows', () => {
   const { plan } = fixture();
   const byId = new Map();
   for (const p of asPoints(plan.distance)) {
-    for (const id of p.label.split(', ')) byId.set(id, p.role);
+    for (const id of p.labels) byId.set(id, p.role);
   }
   for (const r of plan.distance) {
     assert.strictEqual(byId.get(r.id), r.expect21 === 'OPERATE' ? 'good' : 'bad',
@@ -194,4 +199,38 @@ test('the frame shrinks to what is drawn', () => {
 test('no settings means no plot rather than a broken one', () => {
   const spec = Plot.rx({ zones: [], z1mag: 0, z1ang: 0 }, {});
   assert.deepStrictEqual(spec.items, []);
+});
+
+test('a crowded spot keeps its label short without losing the rows', () => {
+  /*
+   * All six phase loops measure the same impedance wherever the ground and
+   * phase reaches are equal, so a single dot routinely carries seven rows.
+   * Seven identifiers strung across a plot label nothing, but the dot still
+   * has to know which rows it holds.
+   */
+  const rows = ['T01', 'T03', 'T05', 'T07', 'T09', 'T11', 'T13'].map((id) => ({
+    id, zMag: 6.01, reverse: false, expect21: 'OPERATE'
+  }));
+  const [dot] = Plot.distancePoints(rows);
+
+  assert.strictEqual(dot.count, 7);
+  assert.deepStrictEqual(dot.labels, rows.map((r) => r.id), 'every row is still on the dot');
+  assert.strictEqual(dot.label, 'T01, T03, T05 +4');
+
+  // A handful is written out in full; the cap only bites past three.
+  assert.strictEqual(Plot.distancePoints(rows.slice(0, 3))[0].label, 'T01, T03, T05');
+  assert.strictEqual(Plot.distancePoints(rows.slice(0, 4))[0].label, 'T01, T03, T05 +1');
+});
+
+test('the whole default matrix plots onto one dot per zone and point', () => {
+  const { plan } = fixture();
+  const pts = asPoints(plan.distance);
+  // Two zones in this fixture, in and out: four spots, every row on one.
+  assert.strictEqual(pts.length, 4);
+  assert.strictEqual(
+    pts.reduce((n, p) => n + p.count, 0),
+    plan.distance.length,
+    'every test point reached the plot exactly once'
+  );
+  for (const p of pts) assert.ok(p.label.length < 20, 'label too long to draw: ' + p.label);
 });

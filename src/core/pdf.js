@@ -399,8 +399,9 @@ async function testReportPdf(args) {
       ),
       {
         caption: 'Test points on the R-X plane, local end, secondary ohms. Green is an ' +
-          'expected OPERATE, red an expected RESTRAIN, amber a spot holding both. Dashed ' +
-          'radial: the line at 100%. Circles, innermost out: ' +
+          'expected OPERATE, red an expected RESTRAIN, amber a spot holding both. Loops that ' +
+          'measure the same impedance share a dot, so "T01, T03, T05 +4" is seven rows on one ' +
+          'spot. Dashed radial: the line at 100%. Circles, innermost out: ' +
           line.zones.map((z) => z.name + ' ' + z.reach.toFixed(2) + ' ohm' +
             (z.direction === 'reverse' ? ' reverse, drawn below the origin' : '')).join(', ') + '.'
       }

@@ -419,7 +419,9 @@ window.Views = window.Views || {};
 
         '<div class="card" style="margin:14px 0 0"><h3>Generated test points</h3>' +
         '<p class="sub">Every row from the table, plotted where the relay sees it and labelled ' +
-        'with the number the report uses. Moves with the sliders.</p>' +
+        'with the number the report uses. Moves with the sliders. Loops that measure the same ' +
+        'impedance share a dot — where the ground and phase reaches are equal, that is all six ' +
+        'of them — so a label like <b>T01, T03, T05 +4</b> means seven rows on one spot.</p>' +
         '<svg id="rx2" width="392" height="440"></svg>' +
         '<div class="legend"><span><i style="background:#3fb950"></i>Expected OPERATE</span>' +
         '<span><i style="background:#f85149"></i>Expected RESTRAIN</span>' +
