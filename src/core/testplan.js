@@ -16,7 +16,21 @@ const C = require('./complex');
 const { FAULT_TYPES, byKey, faultQuantities } = require('./faults');
 const { standardChecks } = require('./alpha');
 
-const DEFAULT_TYPES = ['AG', 'BC', 'ABC'];
+/*
+ * Every loop, not one per category.
+ *
+ * The six phase loops are not interchangeable: each uses different CT and VT
+ * inputs and a different measuring loop in the relay. A swapped B-phase CT,
+ * an open C-phase VT fuse, or a zone that only picks up on two of the three
+ * ground loops all pass an A-G test and fail a B-G one. Testing one loop per
+ * category proves the settings; testing all six proves the wiring too, which
+ * is what commissioning is for.
+ *
+ * It costs points -- three zones become 42 rows rather than 18 -- so anything
+ * not wanted on a particular job comes off with the omit checkbox on the
+ * report, per row, rather than by quietly never being generated.
+ */
+const DEFAULT_TYPES = ['AG', 'BG', 'CG', 'BC', 'CA', 'AB', 'ABC'];
 
 const A_OP = C.polar(1, 120);
 const A2_OP = C.polar(1, 240);

@@ -96,7 +96,9 @@ test('a relay with no differential reports it rather than failing', () => {
 
 test('the plan carries distance points and no differential checks', () => {
   const plan = buildPlan(lineOf());
-  assert.strictEqual(plan.counts.distance, 2 * 3 * 2, 'two zones, three fault types, two points');
+  const { DEFAULT_TYPES } = require('../src/core/testplan');
+  assert.strictEqual(plan.counts.distance, 2 * DEFAULT_TYPES.length * 2,
+    'two zones, every fault loop, two points');
   assert.strictEqual(plan.counts.differential, 0);
   assert.strictEqual(plan.differential.length, 0);
 });

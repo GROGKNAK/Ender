@@ -517,11 +517,16 @@ function runSmoke() {
         '    await new Promise(function (r) { setTimeout(r, 1100); });' +
         '    return true;' +
         '  };' +
-        '  var labels = function (id) {' +
-        '    return Array.prototype.map.call(' +
-        '      document.querySelectorAll("#" + id + " text"),' +
-        '      function (t) { return t.textContent; }).join(",").split(/[,\\s]+/)' +
-        '      .filter(function (s) { return /^[TD]\\d+$/.test(s); });' +
+        '  var plotted = function (id) {' +
+        '    var named = [], total = 0;' +
+        '    Array.prototype.forEach.call(' +
+        '      document.querySelectorAll("#" + id + " text"), function (t) {' +
+        '        var ids = t.textContent.match(/[TD]\\d+/g) || [];' +
+        '        var more = /\\+(\\d+)/.exec(t.textContent);' +
+        '        named = named.concat(ids);' +
+        '        total += ids.length + (more ? Number(more[1]) : 0);' +
+        '      });' +
+        '    return { named: named, total: total };' +
         '  };' +
         '  var places = function (id) {' +
         '    return Array.prototype.map.call(' +
@@ -536,14 +541,20 @@ function runSmoke() {
         '        return c ? (c.textContent.match(/[TD]\\d+/) || [""])[0] : "";' +
         '      }).filter(Boolean);' +
         '  };' +
-        '  var missing = function (want, got) {' +
-        '    return want.filter(function (x) { return got.indexOf(x) < 0; });' +
+        '  var accounts = function (id, rows) {' +
+        '    var p = plotted(id);' +
+        '    if (p.total !== rows.length) {' +
+        '      return id + " plots " + p.total + " of " + rows.length + " rows";' +
+        '    }' +
+        '    var stray = p.named.filter(function (x) { return rows.indexOf(x) < 0; });' +
+        '    if (stray.length) return id + " names rows that are not in the table: " + stray.join(" ");' +
+        '    return "";' +
         '  };' +
         '  if (!(await nav("distance"))) return "distance not reachable";' +
         '  var tIds = tableIds("#tp");' +
         '  if (!tIds.length) return "no distance rows";' +
-        '  var gone = missing(tIds, labels("rx2"));' +
-        '  if (gone.length) return "rx2 is missing " + gone.join(" ");' +
+        '  var bad = accounts("rx2", tIds);' +
+        '  if (bad) return bad;' +
         '  var rxBefore = places("rx2");' +
         '  var inBox = document.querySelector(\'[data-num="inZonePct"] [data-numrange]\');' +
         '  if (!inBox) return "no in-zone control";' +
@@ -554,8 +565,8 @@ function runSmoke() {
         '  if (!(await nav("differential"))) return "differential not reachable";' +
         '  var dIds = tableIds("#dchecks");' +
         '  if (!dIds.length) return "no 87L rows";' +
-        '  gone = missing(dIds, labels("ap2"));' +
-        '  if (gone.length) return "ap2 is missing " + gone.join(" ");' +
+        '  bad = accounts("ap2", dIds);' +
+        '  if (bad) return bad;' +
         '  var apBefore = places("ap2");' +
         '  var rBox = document.querySelector(\'[data-num="d87r"] [data-numrange]\');' +
         '  if (!rBox) return "no 87LR control";' +

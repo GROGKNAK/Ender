@@ -29,7 +29,8 @@ const RAD = Math.PI / 180;
  * merge and their identifiers are joined. The key is the caller's business:
  * it decides what "the same spot" means for the quantity being plotted.
  */
-function groupPoints(items) {
+function groupPoints(items, opts) {
+  const cap = (opts && opts.cap) || 3;
   const order = [];
   const seen = new Map();
   for (const it of items) {
@@ -47,7 +48,19 @@ function groupPoints(items) {
       order.push(next);
     }
   }
-  return order.map((g) => Object.assign(g, { label: g.labels.join(', ') }));
+  /*
+   * A spot can hold a lot of rows -- all six phase loops land together
+   * wherever the ground and phase reaches are equal -- and seven identifiers
+   * strung across a plot label nothing. The first few plus a count says the
+   * same thing and leaves the picture readable; the table beside it has them
+   * all, in order.
+   */
+  return order.map((g) => Object.assign(g, {
+    label: g.labels.length > cap
+      ? g.labels.slice(0, cap).join(', ') + ' +' + (g.labels.length - cap)
+      : g.labels.join(', '),
+    count: g.labels.length
+  }));
 }
 
 /*
@@ -327,13 +340,25 @@ function differentialPoints(checks) {
     g.members.push({ phase: x.phase, id: x.id });
   }
 
+  const cap = 3;
   return order.map((g) => {
     const phase = g.members.map((m) => m.phase).sort()[0];
     const ids = [];
     for (const m of g.members) {
       if (m.phase === phase && ids.indexOf(m.id) < 0) ids.push(m.id);
     }
-    return { magnitude: g.magnitude, angle: g.angle, role: g.role, label: ids.join(', ') };
+    return {
+      magnitude: g.magnitude,
+      angle: g.angle,
+      role: g.role,
+      // `label` is what gets drawn and may be shortened; `labels` is every
+      // identifier on the spot, for anything that needs to know them all.
+      labels: ids,
+      count: ids.length,
+      label: ids.length > cap
+        ? ids.slice(0, cap).join(', ') + ' +' + (ids.length - cap)
+        : ids.join(', ')
+    };
   });
 }
 

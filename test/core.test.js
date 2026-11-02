@@ -301,9 +301,58 @@ test('standard checks bracket both boundaries', () => {
 
 test('plan covers every zone, type and point', () => {
   const plan = buildPlan(demoLine());
-  assert.strictEqual(plan.counts.distance, 3 * 3 * 2);
+  const { DEFAULT_TYPES } = require('../src/core/testplan');
+
+  /*
+   * Asserted as coverage rather than as a number. The six phase loops are not
+   * interchangeable -- each uses different CT and VT inputs -- so what matters
+   * is that every one of them is generated for every zone at both points, not
+   * that the total happens to be some count.
+   */
+  const zones = [...new Set(plan.distance.map((r) => r.zoneNo))];
+  assert.strictEqual(zones.length, 3);
+  assert.deepStrictEqual(
+    [...new Set(plan.distance.map((r) => r.type))].sort(),
+    DEFAULT_TYPES.slice().sort(),
+    'a fault loop is missing from the matrix'
+  );
+
+  const missing = [];
+  for (const zone of zones) {
+    for (const type of DEFAULT_TYPES) {
+      for (const point of ['in', 'out']) {
+        const found = plan.distance.some((r) =>
+          r.zoneNo === zone && r.type === type && r.pointKey === point);
+        if (!found) missing.push(zone + '/' + type + '/' + point);
+      }
+    }
+  }
+  assert.deepStrictEqual(missing, []);
+  assert.strictEqual(plan.counts.distance, zones.length * DEFAULT_TYPES.length * 2);
+
   assert.strictEqual(plan.distance[0].expect21, 'OPERATE');
   assert.strictEqual(plan.distance[1].expect21, 'RESTRAIN');
+});
+
+test('each loop injects into its own phases', () => {
+  /*
+   * The whole reason for testing six loops rather than two: a B-G test has to
+   * put current in B and depress B, or it proves nothing an A-G test did not
+   * already prove and would pass with the B-phase CT wired to the wrong input.
+   */
+  const plan = buildPlan(demoLine());
+  const faulted = (row) => ['A', 'B', 'C']
+    .filter((p, k) => C.abs(row.local.i[k]) > 0.01).join('');
+
+  const seen = {};
+  for (const r of plan.distance.filter((x) => x.zoneNo === 1 && x.pointKey === 'in')) {
+    seen[r.type] = faulted(r);
+  }
+  assert.deepStrictEqual(seen, {
+    AG: 'A', BG: 'B', CG: 'C',
+    BC: 'BC', CA: 'AC', AB: 'AB',
+    ABC: 'ABC'
+  });
 });
 
 test('distance and differential verdicts disagree where they should', () => {
