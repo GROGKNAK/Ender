@@ -167,13 +167,18 @@ function build(outDir) {
 
   /*
    * The page is written rather than copied, because its asset URLs carry the
-   * stamp. manifest.js is left unstamped on purpose: it is what tells the
-   * page what the stamp is, and a stale one gives itself away immediately
-   * because the modules it names are stale with it.
+   * stamp -- every one of them, manifest.js included.
+   *
+   * Leaving the manifest out was tried and was wrong. It holds the list of
+   * view scripts that boot.js loads, so a cached manifest hands back script
+   * URLs with no stamp on them, which are then themselves served from cache:
+   * a fresh page running old views, which is the mixture this exists to stop.
+   * index.html is the only entry point that cannot be stamped, and
+   * everything it names has to be.
    */
   const page = fs.readFileSync(path.join(ROOT, 'src/web/index.html'), 'utf8')
     .replace(/(<script src="|<link rel="stylesheet" href=")([^"]+)"/g,
-      (whole, lead, url) => (url === 'manifest.js' ? whole : lead + url + '?v=' + stamp + '"'));
+      (whole, lead, url) => lead + url + '?v=' + stamp + '"');
   write('index.html', page);
 
   // Pages serves this from a project path, so nothing may assume a root URL.
