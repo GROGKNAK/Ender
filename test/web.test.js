@@ -243,10 +243,17 @@ test('a stale cache cannot serve half of one build and half of another', () => {
 
   assert.match(json.stamp, /^[0-9a-f]{10}$/);
 
+  /*
+   * Every reference, with no exception. manifest.js was once left out on the
+   * grounds that it carries the stamp -- but it also carries the list of view
+   * scripts, so a cached one hands back unstamped script URLs that are then
+   * served from cache too: a fresh page running old views. index.html is the
+   * only entry point that cannot be stamped.
+   */
   const refs = [...page.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(refs.length >= 4);
+  assert.ok(refs.length >= 5);
+  assert.ok(refs.some((u) => u.startsWith('manifest.js')), 'the page loads the manifest');
   for (const url of refs) {
-    if (url === 'manifest.js') continue;   // it is what carries the stamp
     assert.ok(url.endsWith('?v=' + json.stamp), url + ' is not stamped');
   }
   // boot.js adds the view scripts itself, so those need it too.
