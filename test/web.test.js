@@ -22,6 +22,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 
 const { readZip, sortSources } = require('../src/core/bundle');
@@ -198,10 +199,11 @@ test('the web build ships what the page asks for', () => {
   const manifest = fs.readFileSync(path.join(dir, 'manifest.js'), 'utf8');
   const json = JSON.parse(manifest.slice(manifest.indexOf('{'), manifest.lastIndexOf('}') + 1));
 
+  const bare = (url) => url.split('?')[0];
   for (const name of json.scripts) {
-    assert.ok(fs.existsSync(path.join(dir, name)), 'missing view script: ' + name);
+    assert.ok(fs.existsSync(path.join(dir, bare(name))), 'missing view script: ' + name);
   }
-  assert.deepStrictEqual(json.scripts, VIEW_SCRIPTS);
+  assert.deepStrictEqual(json.scripts.map(bare), VIEW_SCRIPTS);
 
   for (const name of [
     'index.html', 'boot.js', 'modules.js', 'styles.css',
@@ -225,6 +227,62 @@ test('the web build ships what the page asks for', () => {
   assert.ok(csp, 'the page declares no content security policy');
   assert.ok(!/unsafe-eval/.test(csp[1]), 'the policy should not need to allow eval');
   assert.ok(/script-src 'self'/.test(csp[1]));
+});
+
+test('a stale cache cannot serve half of one build and half of another', () => {
+  /*
+   * Pages serves every file with max-age=600 and gives no way to change it,
+   * so without a stamp on each URL a browser can hold a fresh index.html and
+   * a ten-minute-old modules.js at once -- running a mixture of two builds on
+   * a page whose job is working out test quantities.
+   */
+  const dir = site();
+  const page = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  const manifest = fs.readFileSync(path.join(dir, 'manifest.js'), 'utf8');
+  const json = JSON.parse(manifest.slice(manifest.indexOf('{'), manifest.lastIndexOf('}') + 1));
+
+  assert.match(json.stamp, /^[0-9a-f]{10}$/);
+
+  const refs = [...page.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(refs.length >= 4);
+  for (const url of refs) {
+    if (url === 'manifest.js') continue;   // it is what carries the stamp
+    assert.ok(url.endsWith('?v=' + json.stamp), url + ' is not stamped');
+  }
+  // boot.js adds the view scripts itself, so those need it too.
+  for (const url of json.scripts) {
+    assert.ok(url.endsWith('?v=' + json.stamp), url + ' is not stamped');
+  }
+
+  // The stamp has to follow the content. Same sources, same stamp -- or a
+  // deploy that changed nothing would pointlessly re-download everything.
+  const second = fs.mkdtempSync(path.join(os.tmpdir(), 'ender-web2-'));
+  try {
+    assert.strictEqual(build(second).stamp, json.stamp, 'same sources should give the same stamp');
+  } finally {
+    fs.rmSync(second, { recursive: true, force: true });
+  }
+
+  /*
+   * And the part that matters: a changed module has to change it. Checked by
+   * digesting the shipped files the same way the build does, with one byte
+   * different, rather than by editing a source file out from under the repo.
+   */
+  const stampOf = (edit) => {
+    const digest = crypto.createHash('sha256');
+    const names = ['modules.js', 'boot.js', 'styles.css', 'vendor/pdf-lib.min.js']
+      .concat(VIEW_SCRIPTS)
+      .concat(['samples/DEMO_ALPHA_LN1_Settings.html', 'samples/DEMO_BRAVO_LN1_Settings.html'])
+      .sort();
+    for (const rel of names) {
+      let body = fs.readFileSync(path.join(dir, rel));
+      if (rel === edit) body = Buffer.concat([body, Buffer.from('/* changed */')]);
+      digest.update(rel).update(body);
+    }
+    return digest.digest('hex').slice(0, 10);
+  };
+  assert.strictEqual(stampOf(null), json.stamp, 'the digest is over the shipped files');
+  assert.notStrictEqual(stampOf('modules.js'), json.stamp, 'a changed module must change the stamp');
 });
 
 test('the bundle carries the source unchanged, not a transformed copy', () => {
